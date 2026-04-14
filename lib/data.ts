@@ -55,7 +55,7 @@ export const currentUser: Author = {
   id: "u0",
   name: "Alex Johnson",
   avatar: "👤",
-  college: "MIT Campus Press",
+  college: "University Campus Hub",
   bio: "Campus journalist | Tech & Culture enthusiast | Class of 2026",
   followers: 1240,
   following: 386,
@@ -285,7 +285,7 @@ Log in to the Library Portal using your institutional email ID. Navigate to "Dig
 
 - **IEEE Xplore Full Collection** — 5M+ papers
 - **Springer eBooks** — 3,000+ titles
-- **MIT OpenCourseWare** — Curated video lectures
+- **University Hub** — Curated video lectures
 - **Project MUSE** — Humanities and social sciences
 
 ## Off-Campus Access

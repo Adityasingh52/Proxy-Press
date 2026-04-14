@@ -242,7 +242,7 @@ export default function CreatePostPage() {
               }}>👤</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>Alex Johnson</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>MIT Campus Press · just now</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Campus Press · just now</div>
               </div>
               {category && (
                 <span style={{

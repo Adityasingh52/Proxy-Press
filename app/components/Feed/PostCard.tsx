@@ -54,9 +54,15 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
           width: '40px', height: '40px', borderRadius: '50%',
           background: `linear-gradient(135deg, ${catColor}, ${catColor}99)`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '18px', flexShrink: 0,
+          fontSize: post.author.avatar && !post.author.avatar.startsWith('data:') && !post.author.avatar.startsWith('http') && !post.author.avatar.startsWith('/') ? '18px' : '0', 
+          flexShrink: 0,
+          overflow: 'hidden'
         }}>
-          {post.author.avatar}
+          {post.author.avatar && !post.author.avatar.startsWith('data:') && !post.author.avatar.startsWith('http') && !post.author.avatar.startsWith('/') ? (
+            post.author.avatar
+          ) : (
+            <img src={post.author.avatar} alt={post.author.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          )}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--text-primary)' }}>
