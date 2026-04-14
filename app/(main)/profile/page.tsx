@@ -56,28 +56,62 @@ export default function ProfilePage() {
           <div style={{
             position: 'absolute',
             bottom: '16px',
-            right: '16px',
-            backdropFilter: 'blur(12px)',
-            background: 'rgba(255, 255, 255, 0.15)',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '12px 24px',
+            right: '24px',
             display: 'flex',
-            gap: '24px',
-            color: '#fff'
+            gap: '12px',
           }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 800 }}>{user.posts}</div>
-              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', opacity: 0.8 }}>Posts</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 800 }}>{user.followers.toLocaleString()}</div>
-              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', opacity: 0.8 }}>Followers</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '18px', fontWeight: 800 }}>{user.following.toLocaleString()}</div>
-              <div style={{ fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', opacity: 0.8 }}>Following</div>
-            </div>
+            {[
+              { label: 'Posts', value: user.posts, icon: '📰', color: '#60A5FA' },
+              { label: 'Followers', value: user.followers.toLocaleString(), icon: '👥', color: '#34D399' },
+              { label: 'Following', value: user.following.toLocaleString(), icon: '🤝', color: '#FBBF24' }
+            ].map((stat, i) => (
+              <div 
+                key={stat.label} 
+                style={{
+                  backdropFilter: 'blur(16px)',
+                  background: 'rgba(255, 255, 255, 0.12)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: 'var(--radius-lg)',
+                  padding: '10px 18px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  minWidth: '94px',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.15)',
+                  transition: 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                  cursor: 'pointer',
+                  animation: `fade-in-up 0.5s ease backwards ${i * 0.1}s`
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.transform = 'translateY(-6px) scale(1.05)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+                }}
+              >
+                <span style={{ fontSize: '18px', marginBottom: '4px' }}>{stat.icon}</span>
+                <span style={{ 
+                  fontSize: '20px', 
+                  fontWeight: 900, 
+                  color: '#fff', 
+                  letterSpacing: '-0.5px',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}>
+                  {stat.value}
+                </span>
+                <span style={{ 
+                  fontSize: '10px', 
+                  fontWeight: 700, 
+                  color: 'rgba(255,255,255,0.7)', 
+                  textTransform: 'uppercase', 
+                  letterSpacing: '0.1em' 
+                }}>
+                  {stat.label}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -109,27 +143,64 @@ export default function ProfilePage() {
                 <h1 style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.5px' }}>
                   {user.name}
                 </h1>
-                <span style={{ 
-                  padding: '4px 10px', background: 'var(--primary-light)', 
-                  color: 'var(--primary)', borderRadius: 'var(--radius-full)', 
-                  fontSize: '11px', fontWeight: 700 
-                }}>
-                  Verified Editor
-                </span>
               </div>
               <p style={{ fontSize: '14px', color: 'var(--text-muted)', fontWeight: 500 }}>
                 @{user.name.toLowerCase().replace(' ', '')} · {user.college}
               </p>
             </div>
 
-            {/* Edit button */}
+            {/* Unique Edit Dashboard Button */}
             <button
               id="edit-profile-btn"
-              className="btn btn-primary"
-              style={{ fontSize: '13px', padding: '10px 24px', alignSelf: 'center' }}
               onClick={() => setIsEditModalOpen(true)}
+              style={{
+                alignSelf: 'center',
+                padding: '12px 28px',
+                borderRadius: 'var(--radius-full)',
+                background: 'rgba(255, 255, 255, 0.05)',
+                backdropFilter: 'blur(10px)',
+                border: '2px solid rgba(255, 255, 255, 0.1)',
+                color: 'var(--text-primary)',
+                fontSize: '13px',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                position: 'relative',
+                overflow: 'hidden',
+                boxShadow: '0 4px 15px rgba(0, 0, 0, 0.05)',
+                marginTop: '10px'
+              }}
+              className="unique-edit-btn"
+              onMouseEnter={e => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.borderColor = 'var(--primary)';
+                e.currentTarget.style.boxShadow = '0 8px 25px rgba(37, 99, 235, 0.2)';
+                const icon = e.currentTarget.querySelector('.edit-icon') as HTMLElement;
+                if (icon) icon.style.transform = 'rotate(-20deg) scale(1.2)';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(0, 0, 0, 0.05)';
+                const icon = e.currentTarget.querySelector('.edit-icon') as HTMLElement;
+                if (icon) icon.style.transform = 'none';
+              }}
             >
-              ✏️ Edit Dashboard
+              <div 
+                className="btn-glow-overlay"
+                style={{
+                  position: 'absolute',
+                  top: 0, left: '-100%',
+                  width: '100%', height: '100%',
+                  background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                  transition: '0.5s',
+                }}
+              />
+              <span className="edit-icon" style={{ transition: 'transform 0.3s ease' }}>✏️</span>
+              <span style={{ letterSpacing: '0.02em' }}>Edit Dashboard</span>
             </button>
           </div>
 

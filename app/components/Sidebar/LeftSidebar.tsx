@@ -212,7 +212,6 @@ export default function LeftSidebar() {
               <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {user.name}
               </div>
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>Verified Student</div>
             </div>
           </div>
         </Link>
