@@ -116,10 +116,13 @@ export default function RightSidebar() {
       {/* Announcements */}
       <section style={{ marginBottom: '28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
             📣 Notices
+            <span style={{ display: 'inline-flex', width: '8px', height: '8px', borderRadius: '50%', background: '#EF4444', position: 'relative' }}>
+              <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#EF4444', animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite', opacity: 0.75 }}></span>
+            </span>
           </h3>
-          <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600 }}>See all</span>
+          <span style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}>See all</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {announcements.map((ann) => (
@@ -166,6 +169,32 @@ export default function RightSidebar() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Campus Status Card */}
+      <section style={{ 
+        padding: '16px', 
+        borderRadius: 'var(--radius-lg)', 
+        background: 'var(--surface-2)', 
+        border: '1px solid var(--border)',
+        marginBottom: '28px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: 'var(--text-muted)' }}>CAMPUS STATUS</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#10B981', fontWeight: 700 }}>
+            ● Operational
+          </span>
+        </div>
+        <div style={{ display: 'grid', gap: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Wi-Fi Network</span>
+            <span style={{ fontWeight: 600 }}>98% Up</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
+            <span style={{ color: 'var(--text-secondary)' }}>Library Seats</span>
+            <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Limited</span>
+          </div>
         </div>
       </section>
 
