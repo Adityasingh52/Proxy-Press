@@ -1,3 +1,5 @@
+'use client';
+
 import Link from 'next/link';
 import { categories, trendingTopics, announcements } from '@/lib/data';
 
