@@ -811,14 +811,22 @@ export default function MessagesPage() {
               </button>
             </div>
             <button 
-              className="msg-send-btn" 
-              onClick={sendMessage} 
-              disabled={!messageInput.trim()}
-              aria-label="Send message"
+              className={`msg-send-btn ${!messageInput.trim() ? 'mic-mode' : ''}`}
+              onClick={() => messageInput.trim() ? sendMessage() : alert('Voice recording feature coming soon!')}
+              aria-label={messageInput.trim() ? "Send message" : "Voice message"}
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-              </svg>
+              {messageInput.trim() ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              )}
             </button>
           </div>
         </div>
