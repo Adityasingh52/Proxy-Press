@@ -233,7 +233,7 @@ export default function MessagesPage() {
     }, 1500);
   };
 
-  const triggerUpload = (ref: React.RefObject<HTMLInputElement>) => {
+  const triggerUpload = (ref: React.RefObject<HTMLInputElement | null>) => {
     ref.current?.click();
   };
   const sendMessage = () => {
