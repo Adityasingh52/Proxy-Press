@@ -135,6 +135,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u5', text: 'Can you help me with the project?', timestamp: 'Yesterday', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Of course! What do you need?', timestamp: 'Yesterday', seen: true, type: 'text' },
@@ -166,6 +167,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u7', text: 'Hey, wanna practice for the interview?', timestamp: 'Sun', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Good idea! Let me check my schedule', timestamp: 'Sun', seen: true, type: 'text' },
