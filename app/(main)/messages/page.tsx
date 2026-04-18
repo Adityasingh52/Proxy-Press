@@ -867,26 +867,29 @@ function MessagesContent() {
       </div>
 
       {showFutureModal && (
-        <div className="logout-overlay" onClick={() => setShowFutureModal(false)}>
-          <div className="logout-modal" onClick={e => e.stopPropagation()}>
-            <div className="logout-modal-header">
-              <div className="logout-modal-icon" style={{ color: '#F59E0B', background: '#FEF3C7' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+        <div className="msg-future-overlay" onClick={() => setShowFutureModal(false)}>
+          <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
+            <div className="msg-future-handle" />
+            <div className="msg-future-content">
+              <div className="msg-future-icon-wrapper">
+                <div className="msg-future-icon-glow" />
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M12 8v4"/><path d="M12 16h.01"/>
                 </svg>
               </div>
-              <h2 className="logout-modal-title">Coming Soon!</h2>
-              <p className="logout-modal-desc">
-                We're currently scaling our infrastructure to support high-quality voice and video calls. This feature will be available in a future update.
+              <h2 className="msg-future-title">Premium Feature</h2>
+              <p className="msg-future-desc">
+                We're currently scaling our infrastructure to support <strong>HD Voice & Video calls</strong>. This encrypted communication suite will be available in a future update.
               </p>
-            </div>
-            <div className="logout-modal-actions">
               <button 
-                className="logout-confirm-btn" 
-                style={{ background: 'var(--primary)', width: '100%' }}
+                className="msg-future-btn" 
                 onClick={() => setShowFutureModal(false)}
               >
-                Got it
+                <span>Got it</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </button>
             </div>
           </div>
