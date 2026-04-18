@@ -2,11 +2,12 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import './settings.css';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   useEffect(() => {
     const main = document.getElementById('main-content');
@@ -15,6 +16,10 @@ export default function SettingsPage() {
       return () => main.classList.remove('no-top-padding');
     }
   }, []);
+
+  const handleLogout = () => {
+    router.push('/');
+  };
 
   const settingsItems = [
     {
@@ -72,7 +77,7 @@ export default function SettingsPage() {
       items: [
         {
           label: 'Theme',
-          sub: 'Light, Dark or System',
+          sub: 'Customize your experience',
           icon: (
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -93,7 +98,7 @@ export default function SettingsPage() {
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
             </svg>
           ),
-          href: '/',
+          onClick: () => setShowLogoutModal(true),
           danger: true,
         },
       ],
@@ -116,38 +121,70 @@ export default function SettingsPage() {
           <div key={idx} className="settings-group">
             <h2 className="settings-group-title">{group.group}</h2>
             <div className="settings-list">
-              {group.items.map((item, i) => (
-                <Link 
-                  key={i} 
-                  href={item.href} 
-                  className={`settings-item ${item.danger ? 'settings-item-danger' : ''}`}
-                >
-                  <div className="settings-item-content">
-                    <div className="settings-item-icon">
-                      {item.icon}
+              {group.items.map((item, i) => {
+                const isLink = !!item.href;
+                const Content = (
+                  <>
+                    <div className="settings-item-content">
+                      <div className="settings-item-icon">
+                        {item.icon}
+                      </div>
+                      <div className="settings-item-text">
+                        <span className="settings-item-label">{item.label}</span>
+                        <span className="settings-item-sub">{item.sub}</span>
+                      </div>
                     </div>
-                    <div className="settings-item-text">
-                      <span className="settings-item-label">{item.label}</span>
-                      <span className="settings-item-sub">{item.sub}</span>
-                    </div>
-                  </div>
-                  {item.isTheme ? (
-                    <div className="theme-selector-pill">
-                      <span>Dark</span>
-                    </div>
-                  ) : (
                     <div className="settings-chevron">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="9 18 15 12 9 6"/>
                       </svg>
                     </div>
-                  )}
-                </Link>
-              ))}
+                  </>
+                );
+
+                return isLink ? (
+                  <Link 
+                    key={i} 
+                    href={item.href!} 
+                    className={`settings-item ${item.danger ? 'settings-item-danger' : ''}`}
+                  >
+                    {Content}
+                  </Link>
+                ) : (
+                  <div 
+                    key={i} 
+                    onClick={item.onClick}
+                    className={`settings-item ${item.danger ? 'settings-item-danger' : ''}`}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {Content}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ))}
       </div>
+
+      {showLogoutModal && (
+        <div className="logout-overlay" onClick={() => setShowLogoutModal(false)}>
+          <div className="logout-modal" onClick={e => e.stopPropagation()}>
+            <div className="logout-modal-header">
+              <div className="logout-modal-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </div>
+              <h2 className="logout-modal-title">Logging Out?</h2>
+              <p className="logout-modal-desc">Are you sure you want to log out of your account?</p>
+            </div>
+            <div className="logout-modal-actions">
+              <button className="logout-cancel-btn" onClick={() => setShowLogoutModal(false)}>Cancel</button>
+              <button className="logout-confirm-btn" onClick={handleLogout}>Log Out</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
