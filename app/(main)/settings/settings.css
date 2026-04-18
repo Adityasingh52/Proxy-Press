@@ -132,6 +132,22 @@
   color: var(--text-subtle);
 }
 
+.theme-selector-pill {
+  background: var(--surface-2);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  transition: all 0.2s;
+}
+
+.settings-item:hover .theme-selector-pill {
+  background: var(--surface);
+  border-color: var(--text-muted);
+}
+
 /* Danger Item */
 .settings-item-danger {
   color: #EF4444;

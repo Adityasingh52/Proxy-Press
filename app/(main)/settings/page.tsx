@@ -68,6 +68,21 @@ export default function SettingsPage() {
       ],
     },
     {
+      group: 'Appearance',
+      items: [
+        {
+          label: 'Theme',
+          sub: 'Light, Dark or System',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          ),
+          href: '/settings/theme',
+        },
+      ],
+    },
+    {
       group: 'System',
       items: [
         {
@@ -116,11 +131,17 @@ export default function SettingsPage() {
                       <span className="settings-item-sub">{item.sub}</span>
                     </div>
                   </div>
-                  <div className="settings-chevron">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </div>
+                  {item.isTheme ? (
+                    <div className="theme-selector-pill">
+                      <span>Dark</span>
+                    </div>
+                  ) : (
+                    <div className="settings-chevron">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </div>
+                  )}
                 </Link>
               ))}
             </div>
