@@ -1,0 +1,227 @@
+/* ─────────────────────────────────────────
+   REFERENCE-MATCHED EDIT PROFILE DESIGN
+   - Soft Light Theme (Inspired by Ref Image)
+   - Large Rounded Elements
+ ───────────────────────────────────────── */
+
+.edit-profile-container.design-ref {
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 100vh;
+  background-color: var(--bg); /* Keeps dark mode compatibility but follows ref layout */
+  padding: 0 20px 40px;
+}
+
+/* Header */
+.ref-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0 16px; /* Increased top padding */
+  margin-bottom: 4px;
+}
+
+.ref-back-btn, .ref-more-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ref-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Avatar Section */
+.ref-avatar-section {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 32px;
+}
+
+.ref-avatar-wrapper {
+  position: relative;
+  width: 96px;
+  height: 96px;
+}
+
+.ref-avatar-main {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  overflow: hidden;
+  border: 4px solid var(--surface);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.ref-camera-badge {
+  position: absolute;
+  bottom: 0px;
+  right: 0px;
+  width: 28px;
+  height: 28px;
+  background: #00B4FF; /* Ref Image Sky Blue */
+  border-radius: 50%;
+  border: 3px solid var(--surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 180, 255, 0.4);
+}
+
+/* Form Styles */
+.ref-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ref-section-label {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 8px 0 4px;
+}
+
+.ref-input-container {
+  position: relative;
+  width: 100%;
+}
+
+.ref-input, .ref-textarea {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 44px 16px 16px;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 500;
+  outline: none;
+  transition: all 0.2s;
+}
+
+.ref-input:focus, .ref-textarea:focus {
+  background: var(--surface);
+  border-color: #00B4FF;
+  box-shadow: 0 0 0 4px rgba(0, 180, 255, 0.1);
+}
+
+.ref-input-icon {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  font-size: 18px;
+}
+
+.ref-input-row {
+  display: flex;
+  gap: 12px;
+}
+
+.ref-input-container.half {
+  flex: 1;
+}
+
+.ref-textarea {
+  resize: none;
+  min-height: 80px;
+  padding-right: 16px;
+}
+
+/* Save Button */
+.ref-save-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 18px;
+  border-radius: 14px;
+  background: #00B4FF;
+  color: white;
+  border: none;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 20px rgba(0, 180, 255, 0.3);
+  transition: all 0.2s;
+}
+
+.ref-save-btn:hover {
+  background: #009FE0;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 28px rgba(0, 180, 255, 0.4);
+}
+
+.ref-save-btn:active {
+  transform: translateY(0);
+}
+
+/* Modal Styling for Ref */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-content {
+  background: var(--surface);
+  border-radius: 24px;
+  width: 90%;
+  max-width: 320px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.modal-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.confirm-btn {
+  background: #00B4FF;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.close-btn {
+  background: var(--surface-2);
+  color: var(--text-primary);
+  border: none;
+  padding: 12px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Dark Mode Overrides for Ref Image Match */
+.dark .ref-input, .dark .ref-textarea {
+  background: #2D3B4F;
+  border-color: #334155;
+}
