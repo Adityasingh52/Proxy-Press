@@ -76,7 +76,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
   const handleShare = async () => {
     const shareData = {
       title: post.title,
-      text: post.excerpt || `Check out this news: ${post.title}`,
+      text: `Check out this news: ${post.title}`,
       url: window.location.href
     };
 
