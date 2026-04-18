@@ -152,12 +152,12 @@ export default function NotificationSettingsPage() {
                 </svg>
               </div>
               <h2 className="logout-modal-title">
-                {confirmModal.currentValue ? `Turn off ${confirmModal.label}?` : `Turn on ${confirmModal.label}?`}
+                {confirmModal.currentValue ? `Turn off ${confirmModal.label || ''}?` : `Turn on ${confirmModal.label || ''}?`}
               </h2>
               <p className="logout-modal-desc">
                 {confirmModal.currentValue 
-                  ? `You will stop receiving ${confirmModal.label.toLowerCase()} notifications on this device.` 
-                  : `You will start receiving ${confirmModal.label.toLowerCase()} notifications on this device.`}
+                  ? `You will stop receiving ${(confirmModal.label || '').toLowerCase()} notifications on this device.` 
+                  : `You will start receiving ${(confirmModal.label || '').toLowerCase()} notifications on this device.`}
               </p>
             </div>
             <div className="logout-modal-actions">
