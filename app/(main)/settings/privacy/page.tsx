@@ -42,13 +42,16 @@ export default function PrivacySettingsPage() {
       setShowConfirmActivity(true);
       return;
     }
-    setPrivacy(prev => ({
-      ...prev,
-      [category]: {
-        ...prev[category],
-        [key]: !prev[category][key as keyof typeof prev['account'] | keyof typeof prev['data']]
-      }
-    }));
+    setPrivacy(prev => {
+      const categoryObj = prev[category] as Record<string, any>;
+      return {
+        ...prev,
+        [category]: {
+          ...categoryObj,
+          [key]: !categoryObj[key]
+        }
+      };
+    });
   };
 
   const confirmTogglePrivate = () => {
