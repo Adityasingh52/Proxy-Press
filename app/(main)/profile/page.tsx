@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import Link from 'next/link';
-import { currentUser, posts } from '@/lib/data';
+import { useState, useEffect } from 'react';
+import { posts, currentUser } from '@/lib/data';
 import './profile.css';
+import Link from 'next/link';
 
 const userPosts = posts.slice(0, 7);
 const savedPosts = posts.filter(p => p.isSaved);
@@ -16,70 +16,66 @@ const categoryColors: Record<string, string> = {
 
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
-  const settingsRef = useRef<HTMLDivElement>(null);
-  const displayPosts = activeTab === 'posts' ? userPosts : savedPosts;
-
-  // Close settings dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
-      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
-        setSettingsOpen(false);
-      }
-    }
-    if (settingsOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [settingsOpen]);
   
   useEffect(() => {
     const main = document.getElementById('main-content');
     if (main) {
-      main.classList.add('profile-no-header', 'extra-bottom-space');
-      return () => main.classList.remove('profile-no-header', 'extra-bottom-space');
+      main.classList.add('no-top-padding');
+      return () => main.classList.remove('no-top-padding');
     }
   }, []);
+
+  const displayPosts = activeTab === 'posts' ? userPosts : savedPosts;
+
 
   return (
     <div className="ig-profile animate-fade-in" id="profile-page" style={{ position: 'relative' }}>
       
-      {/* ─── Profile Header: Avatar ─── */}
-      <div className="ig-profile-header-centered">
-        <div className="ig-avatar-wrapper">
-          <div className="ig-avatar-ring">
-            <div className="ig-avatar-inner">
+
+      <div className="ig-header-main">
+        <div className="ig-avatar-outer">
+          <Link href="/" className="ig-header-back-btn" aria-label="Go back">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
+            </svg>
+          </Link>
+
+          <div className="ig-avatar-ring jumbo">
+            <div className="ig-avatar-inner jumbo">
               {currentUser.avatar}
             </div>
           </div>
+          
+          <Link href="/settings" className="ig-header-settings-btn" aria-label="Settings">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>
+            </svg>
+          </Link>
         </div>
       </div>
 
-      {/* ─── Profile Info ─── */}
-      <div className="ig-profile-info-centered">
+      <div className="ig-profile-bio-modern">
         <h1 className="ig-display-name">{currentUser.name}</h1>
-        <p className="ig-username">@alexj · {currentUser.college}</p>
-        <p className="ig-bio">{currentUser.bio}</p>
+        <p className="ig-college-tag">MIT Campus Press</p>
+        <p className="ig-bio-text">{currentUser.bio}</p>
       </div>
 
-      {/* ─── Stats Bar (Moved Down) ─── */}
-      <div className="ig-stats-bar">
+      <div className="ig-stats-container-modern stats-bar">
         <div className="ig-stat">
           <span className="ig-stat-value">{currentUser.posts}</span>
           <span className="ig-stat-label">Posts</span>
         </div>
         <div className="ig-stat">
-          <span className="ig-stat-value">{currentUser.followers.toLocaleString()}</span>
+          <span className="ig-stat-value">1.2k</span>
           <span className="ig-stat-label">Followers</span>
         </div>
         <div className="ig-stat">
-          <span className="ig-stat-value">{currentUser.following.toLocaleString()}</span>
+          <span className="ig-stat-value">{currentUser.following}</span>
           <span className="ig-stat-label">Following</span>
         </div>
       </div>
 
-      {/* ─── Action Buttons ─── */}
       <div className="ig-profile-actions">
         <button
           className={`ig-action-btn ${isFollowing ? 'ig-action-btn-following' : 'ig-action-btn-follow'}`}
@@ -89,61 +85,9 @@ export default function ProfilePage() {
           {isFollowing ? 'Following' : 'Follow'}
         </button>
         
-        <div className="ig-settings-container" ref={settingsRef}>
-          <button 
-            className="ig-action-btn ig-action-btn-settings"
-            onClick={() => setSettingsOpen(prev => !prev)}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-            Settings
-          </button>
-
-          {settingsOpen && (
-            <div className="ig-settings-dropdown" id="settings-dropdown">
-              <button className="ig-settings-item" id="edit-profile-btn" onClick={() => setSettingsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                </svg>
-                Edit Profile
-              </button>
-              <button className="ig-settings-item" onClick={() => setSettingsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                </svg>
-                Privacy
-              </button>
-              <button className="ig-settings-item" onClick={() => setSettingsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                </svg>
-                Notifications
-              </button>
-              <button className="ig-settings-item" onClick={() => setSettingsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="16" x2="12" y2="12"/>
-                  <line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                About
-              </button>
-              <div className="ig-settings-divider"></div>
-              <button className="ig-settings-item ig-settings-item-danger" onClick={() => setSettingsOpen(false)}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                  <polyline points="16 17 21 12 16 7"/>
-                  <line x1="21" y1="12" x2="9" y2="12"/>
-                </svg>
-                Log Out
-              </button>
-            </div>
-          )}
-        </div>
+        <Link href="/profile/edit" className="ig-action-btn ig-action-btn-secondary">
+          Edit Profile
+        </Link>
 
         <button className="ig-action-btn-icon" aria-label="Discover people">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -14,9 +14,11 @@ export type Category =
 export interface Author {
   id: string;
   name: string;
+  email?: string;
   avatar: string; // emoji fallback
   college: string;
   bio: string;
+  contactInfo?: string;
   followers: number;
   following: number;
   posts: number;
@@ -57,9 +59,11 @@ export interface Notification {
 export const currentUser: Author = {
   id: "u0",
   name: "Alex Johnson",
+  email: "alex.johnson@mit.edu",
   avatar: "👤",
   college: "MIT Campus Press",
   bio: "Campus journalist | Tech & Culture enthusiast | Class of 2026",
+  contactInfo: "+1 (555) 0123-4567",
   followers: 1240,
   following: 386,
   posts: 42,

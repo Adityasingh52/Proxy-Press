@@ -11,11 +11,13 @@ export default function MobileHeader() {
 
   const isNotifications = pathname === '/notifications';
   const isMessages = pathname === '/messages';
-  const isExplore = pathname === '/explore';
-  const isProfile = pathname === '/profile';
-  const isCreate = pathname === '/create';
+  const isProfile = pathname.startsWith('/profile');
+  const isCreate = pathname.startsWith('/create');
+  const isExplore = pathname.startsWith('/explore');
 
-  if (isProfile || isCreate || isExplore) return null;
+  const isSettings = pathname.startsWith('/settings');
+
+  if (isProfile || isCreate || isExplore || isSettings) return null;
 
   return (
     <header className="mobile-header">

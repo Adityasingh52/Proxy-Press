@@ -50,6 +50,34 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#2563EB" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            try {
+              const theme = localStorage.getItem('proxy-press-theme');
+              const customTheme = localStorage.getItem('proxy-press-custom-theme');
+              const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+              
+              if (theme === 'dark' || (!theme && prefersDark)) {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+
+              if (customTheme) {
+                const colors = JSON.parse(customTheme);
+                Object.entries(colors).forEach(([key, value]) => {
+                  document.documentElement.style.setProperty('--' + key, value);
+                  if (key === 'primary') {
+                    const r = parseInt(value.slice(1, 3), 16);
+                    const g = parseInt(value.slice(3, 5), 16);
+                    const b = parseInt(value.slice(5, 7), 16);
+                    document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
+                  }
+                });
+              }
+            } catch (e) {}
+          })();
+        `}} />
         <style dangerouslySetInnerHTML={{ __html: `
           #initial-loader {
             position: fixed;
