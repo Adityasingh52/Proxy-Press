@@ -68,14 +68,6 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
             <span>{post.timeAgo}</span>
           </div>
         </div>
-        {/* Category badge */}
-        <span style={{
-          padding: '3px 10px', borderRadius: 'var(--radius-full)',
-          fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
-          background: `${catColor}18`, color: catColor,
-        }}>
-          {categoryEmojis[post.category]} {post.category}
-        </span>
         {/* 3-dot menu */}
         <div style={{ position: 'relative' }}>
           <button
@@ -112,8 +104,21 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
       </div>
 
       {/* Image */}
-      <Link href={`/article/${post.slug}`} style={{ display: 'block', marginTop: '14px' }}>
-        <div className="post-image-wrapper">
+      <Link href={`/article/${post.slug}`} style={{ display: 'block', marginTop: '14px', textDecoration: 'none' }}>
+        <div className="post-image-wrapper" style={{ position: 'relative' }}>
+          {/* Overlaid Category pill */}
+          <span style={{
+            position: 'absolute', top: '12px', left: '12px', zIndex: 10,
+            padding: '4px 12px', borderRadius: '100px',
+            fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
+            background: 'rgba(0, 0, 0, 0.4)', backdropFilter: 'blur(10px)',
+            border: `1px solid ${catColor}cc`, color: '#fff',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            display: 'flex', alignItems: 'center', gap: '4px'
+          }}>
+            <span>{categoryEmojis[post.category]}</span>
+            <span>{post.category}</span>
+          </span>
           <img
             src={post.imageUrl}
             alt={post.title}
@@ -126,6 +131,22 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
               if (fallback) fallback.style.display = 'flex';
             }}
           />
+          {/* Headline Overlay */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)',
+            padding: '24px 12px 12px', zIndex: 5
+          }}>
+            <h2 style={{
+              fontWeight: 700, fontSize: '16px', lineHeight: 1.3,
+              color: '#fff', margin: 0,
+              display: '-webkit-box', WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical', overflow: 'hidden',
+              textShadow: '0 1px 3px rgba(0,0,0,0.4)'
+            }}>
+              {post.title}
+            </h2>
+          </div>
           {/* Gradient fallback */}
           <div style={{
             display: 'none', width: '100%', aspectRatio: '16/9',
@@ -140,20 +161,7 @@ export default function PostCard({ post, index = 0 }: PostCardProps) {
 
       {/* Text content */}
       <div style={{ padding: '16px' }}>
-        <Link href={`/article/${post.slug}`} style={{ textDecoration: 'none' }}>
-          <h2 style={{
-            fontWeight: 700, fontSize: '18px', lineHeight: 1.35,
-            color: 'var(--text-primary)', marginBottom: '8px',
-            display: '-webkit-box', WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical', overflow: 'hidden',
-            transition: 'color var(--transition-fast)',
-          }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = 'var(--primary)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'var(--text-primary)'; }}
-          >
-            {post.title}
-          </h2>
-        </Link>
+   
         <p style={{
           fontSize: '14px', color: 'var(--text-muted)', lineHeight: 1.6,
           display: '-webkit-box', WebkitLineClamp: 3,
