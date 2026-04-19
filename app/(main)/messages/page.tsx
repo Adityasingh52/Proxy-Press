@@ -28,6 +28,25 @@ interface Message {
   attachment?: string;
 }
 
+interface StorySlide {
+  id: string;
+  type: 'text' | 'image' | 'video';
+  text?: string;
+  emoji?: string;
+  caption?: string;
+  gradient: string;
+  mediaUrl?: string;
+  timestamp: string;
+}
+
+interface UserStory {
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  slides: StorySlide[];
+  seen: boolean;
+}
+
 interface Conversation {
   id: string;
   user: User;
@@ -37,6 +56,7 @@ interface Conversation {
   isTyping: boolean;
   messages: Message[];
   muted: boolean;
+  vanishMode: boolean;
 }
 
 /* ─────────── MOCK DATA ─────────── */
@@ -51,6 +71,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 3,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u1', text: 'Hey! How are you doing?', timestamp: '10:30 AM', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'I\'m great! Just finished my assignment 📝', timestamp: '10:32 AM', seen: true, type: 'text' },
@@ -70,6 +91,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 1,
     isTyping: true,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u2', text: 'Check out this sunset from the rooftop! 🌅', timestamp: '9:15 AM', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Wow that\'s beautiful!', timestamp: '9:20 AM', seen: true, type: 'text' },
@@ -86,6 +108,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: CURRENT_USER_ID, text: 'Hey Rahul, can you share the Physics notes?', timestamp: '8:00 AM', seen: true, type: 'text' },
       { id: 'm2', senderId: 'u3', text: 'Sure, I\'ll send you the notes tonight', timestamp: '8:05 AM', seen: true, type: 'text' },
@@ -99,6 +122,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: true,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u4', text: 'Did you register for the hackathon?', timestamp: 'Yesterday', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Yes! Our team is ready 💪', timestamp: 'Yesterday', seen: true, type: 'text' },
@@ -113,6 +137,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u5', text: 'Can you help me with the project?', timestamp: 'Yesterday', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Of course! What do you need?', timestamp: 'Yesterday', seen: true, type: 'text' },
@@ -129,6 +154,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u6', text: 'Are you going to the tech meetup?', timestamp: 'Mon', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Wouldn\'t miss it!', timestamp: 'Mon', seen: true, type: 'text' },
@@ -143,6 +169,7 @@ const MOCK_CONVERSATIONS: Conversation[] = [
     unreadCount: 0,
     isTyping: false,
     muted: false,
+    vanishMode: false,
     messages: [
       { id: 'm1', senderId: 'u7', text: 'Hey, wanna practice for the interview?', timestamp: 'Sun', seen: true, type: 'text' },
       { id: 'm2', senderId: CURRENT_USER_ID, text: 'Good idea! Let me check my schedule', timestamp: 'Sun', seen: true, type: 'text' },
@@ -152,6 +179,63 @@ const MOCK_CONVERSATIONS: Conversation[] = [
 ];
 
 const EMOJI_LIST = ['😀', '😂', '❤️', '🔥', '👍', '😍', '🎉', '💯', '🙌', '✨', '😎', '🤔', '👀', '💪', '🚀', '⭐', '🌟', '💫', '🎊', '🥳', '😊', '🤗', '💕', '🙏'];
+
+const STORY_GRADIENTS = [
+  'linear-gradient(135deg, #667eea, #764ba2)',
+  'linear-gradient(135deg, #f093fb, #f5576c)',
+  'linear-gradient(135deg, #4facfe, #00f2fe)',
+  'linear-gradient(135deg, #43e97b, #38f9d7)',
+  'linear-gradient(135deg, #fa709a, #fee140)',
+  'linear-gradient(135deg, #a18cd1, #fbc2eb)',
+  'linear-gradient(135deg, #ffecd2, #fcb69f)',
+  'linear-gradient(135deg, #ff9a9e, #fecfef)',
+];
+
+const MOCK_STORIES: UserStory[] = [
+  {
+    userId: 'u1',
+    userName: 'Arjun Mehta',
+    userAvatar: 'AM',
+    seen: false,
+    slides: [
+      { id: 's1-1', type: 'text', text: 'Just aced my DSA exam!', emoji: '🎯', caption: '3 hours of grinding paid off', gradient: STORY_GRADIENTS[0], timestamp: '2h ago' },
+      { id: 's1-2', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&h=900&fit=crop', caption: 'Campus sunset hits different 🌅', gradient: STORY_GRADIENTS[1], timestamp: '1h ago' },
+    ],
+  },
+  {
+    userId: 'u2',
+    userName: 'Priya Sharma',
+    userAvatar: 'PS',
+    seen: false,
+    slides: [
+      { id: 's2-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=900&fit=crop', caption: 'New semester, new goals ✨', gradient: STORY_GRADIENTS[2], timestamp: '4h ago' },
+      { id: 's2-2', type: 'text', text: 'Café study sessions > library', emoji: '☕', gradient: STORY_GRADIENTS[3], timestamp: '3h ago' },
+      { id: 's2-3', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=900&fit=crop', caption: 'Weekend plans anyone? 🎉', gradient: STORY_GRADIENTS[4], timestamp: '30m ago' },
+    ],
+  },
+  {
+    userId: 'u4',
+    userName: 'Sneha Patel',
+    userAvatar: 'SP',
+    seen: false,
+    slides: [
+      { id: 's4-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=600&h=900&fit=crop', caption: 'Hackathon winning team! 🏆', gradient: STORY_GRADIENTS[5], timestamp: '6h ago' },
+      { id: 's4-2', type: 'text', text: '48 hours well spent', emoji: '🚀', caption: 'Sleep is overrated 😅', gradient: STORY_GRADIENTS[0], timestamp: '5h ago' },
+    ],
+  },
+  {
+    userId: 'u6',
+    userName: 'Ananya Gupta',
+    userAvatar: 'AG',
+    seen: false,
+    slides: [
+      { id: 's6-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&h=900&fit=crop', caption: 'Tech meetup was insane! 💡', gradient: STORY_GRADIENTS[6], timestamp: '5h ago' },
+      { id: 's6-2', type: 'text', text: 'Learning Rust 🦀', emoji: '💻', gradient: STORY_GRADIENTS[7], timestamp: '2h ago' },
+    ],
+  },
+];
+
+const STORY_DURATION = 5000; // 5 seconds per slide
 
 /* ─────────── COMPONENTS ─────────── */
 function MessagesContent() {
@@ -167,6 +251,111 @@ function MessagesContent() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [longPressMsg, setLongPressMsg] = useState<string | null>(null);
   const [showFutureModal, setShowFutureModal] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showMuteToast, setShowMuteToast] = useState(false);
+  const [showVanishToast, setShowVanishToast] = useState(false);
+  const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+
+  /* ─── Story State ─── */
+  const [stories, setStories] = useState<UserStory[]>(MOCK_STORIES);
+  const [myStories, setMyStories] = useState<StorySlide[]>([]);
+  const [activeStoryUserIdx, setActiveStoryUserIdx] = useState<number | null>(null);
+  const [activeSlideIdx, setActiveSlideIdx] = useState(0);
+  const [storyProgress, setStoryProgress] = useState(0);
+  const [storyPaused, setStoryPaused] = useState(false);
+  const [storyReply, setStoryReply] = useState('');
+  const [storyReaction, setStoryReaction] = useState<string | null>(null);
+  const [showCreateStory, setShowCreateStory] = useState(false);
+  const [createStoryText, setCreateStoryText] = useState('');
+  const [createStoryGradient, setCreateStoryGradient] = useState(0);
+  const [showStorySentToast, setShowStorySentToast] = useState(false);
+  const [createStoryTab, setCreateStoryTab] = useState<'text' | 'photo' | 'video' | 'camera'>('text');
+  const [createStoryMedia, setCreateStoryMedia] = useState<string | null>(null);
+  const [createStoryMediaType, setCreateStoryMediaType] = useState<'image' | 'video' | null>(null);
+  const [createStoryCaption, setCreateStoryCaption] = useState('');
+  const storyTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const storyMediaInputRef = useRef<HTMLInputElement>(null);
+  const storyVideoInputRef = useRef<HTMLInputElement>(null);
+  const storyVideoRef = useRef<HTMLVideoElement>(null);
+
+  /* ─── Camera State ─── */
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('user');
+  const [cameraRecording, setCameraRecording] = useState(false);
+  const [cameraRecordTime, setCameraRecordTime] = useState(0);
+  const [cameraCaptured, setCameraCaptured] = useState<string | null>(null);
+  const [cameraCapturedType, setCameraCapturedType] = useState<'image' | 'video' | null>(null);
+  const cameraPreviewRef = useRef<HTMLVideoElement>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
+  const cameraRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    const savedBlocked = localStorage.getItem('blockedUsers');
+    if (savedBlocked) {
+      try {
+        setBlockedUserIds(JSON.parse(savedBlocked));
+      } catch (e) {
+        console.error('Error parsing blocked users', e);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showMuteToast) {
+      const timer = setTimeout(() => setShowMuteToast(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showMuteToast]);
+
+  useEffect(() => {
+    if (showVanishToast) {
+      const timer = setTimeout(() => setShowVanishToast(false), 2500);
+      return () => clearTimeout(timer);
+    }
+  }, [showVanishToast]);
+
+  const handleBlockUser = () => {
+    if (!activeConversation) return;
+    const userId = activeConversation.user.id;
+    if (blockedUserIds.includes(userId)) {
+      setShowBlockConfirm(false);
+      return;
+    }
+    const newBlocked = [...blockedUserIds, userId];
+    setBlockedUserIds(newBlocked);
+    localStorage.setItem('blockedUsers', JSON.stringify(newBlocked));
+    
+    // Store names for the settings page too (simulating a DB)
+    const savedNames = localStorage.getItem('blockedUserNames') || '{}';
+    const namesObj = JSON.parse(savedNames);
+    namesObj[userId] = activeConversation.user.name;
+    localStorage.setItem('blockedUserNames', JSON.stringify(namesObj));
+
+    setShowBlockConfirm(false);
+    setShowChatInfo(false);
+    // Optionally remove from active chat
+    // Optionally remove from active chat
+    setActiveChat(null);
+  };
+
+  const toggleVanishMode = () => {
+    if (!activeChat) return;
+    setConversations(prev => prev.map(c => 
+      c.id === activeChat ? { ...c, vanishMode: !c.vanishMode } : c
+    ));
+    
+    setShowVanishToast(true);
+    
+    // If turning on, we might want to show a toast or something
+    const isNowOn = !activeConversation?.vanishMode;
+    if (isNowOn) {
+      // Logic for Instagram-like behavior (clear messages when closing chat)
+      // For now we'll just toggle the UI
+    }
+  };
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -174,6 +363,322 @@ function MessagesContent() {
   const videoInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const storyReplyInputRef = useRef<HTMLInputElement>(null);
+
+  /* ─── Story Timer Logic ─── */
+  const allViewableStories = useCallback(() => {
+    const result: UserStory[] = [];
+    if (myStories.length > 0) {
+      result.push({ userId: 'me', userName: 'Your Story', userAvatar: '✦', slides: myStories, seen: true });
+    }
+    result.push(...stories);
+    return result;
+  }, [stories, myStories]);
+
+  const closeStoryViewer = useCallback(() => {
+    if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+    setActiveStoryUserIdx(null);
+    setActiveSlideIdx(0);
+    setStoryProgress(0);
+    setStoryPaused(false);
+    setStoryReply('');
+    setStoryReaction(null);
+  }, []);
+
+  const goToNextSlide = useCallback(() => {
+    const viewable = allViewableStories();
+    if (activeStoryUserIdx === null) return;
+    const currentUser = viewable[activeStoryUserIdx];
+    if (!currentUser) return;
+
+    if (activeSlideIdx < currentUser.slides.length - 1) {
+      // Next slide of same user
+      setActiveSlideIdx(prev => prev + 1);
+      setStoryProgress(0);
+    } else if (activeStoryUserIdx < viewable.length - 1) {
+      // Next user
+      // Mark current user as seen
+      if (currentUser.userId !== 'me') {
+        setStories(prev => prev.map(s => s.userId === currentUser.userId ? { ...s, seen: true } : s));
+      }
+      setActiveStoryUserIdx(prev => (prev !== null ? prev + 1 : null));
+      setActiveSlideIdx(0);
+      setStoryProgress(0);
+    } else {
+      // End of all stories
+      if (currentUser.userId !== 'me') {
+        setStories(prev => prev.map(s => s.userId === currentUser.userId ? { ...s, seen: true } : s));
+      }
+      closeStoryViewer();
+    }
+  }, [activeStoryUserIdx, activeSlideIdx, allViewableStories, closeStoryViewer]);
+
+  const goToPrevSlide = useCallback(() => {
+    if (activeSlideIdx > 0) {
+      setActiveSlideIdx(prev => prev - 1);
+      setStoryProgress(0);
+    } else if (activeStoryUserIdx !== null && activeStoryUserIdx > 0) {
+      const viewable = allViewableStories();
+      const prevUser = viewable[activeStoryUserIdx - 1];
+      setActiveStoryUserIdx(prev => (prev !== null ? prev - 1 : null));
+      setActiveSlideIdx(prevUser ? prevUser.slides.length - 1 : 0);
+      setStoryProgress(0);
+    }
+  }, [activeSlideIdx, activeStoryUserIdx, allViewableStories]);
+
+  // Story auto-advance timer
+  useEffect(() => {
+    if (activeStoryUserIdx === null || storyPaused) {
+      if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+      return;
+    }
+
+    const interval = 50; // Update every 50ms
+    const step = (interval / STORY_DURATION) * 100;
+
+    storyTimerRef.current = setInterval(() => {
+      setStoryProgress(prev => {
+        if (prev >= 100) {
+          goToNextSlide();
+          return 0;
+        }
+        return prev + step;
+      });
+    }, interval);
+
+    return () => {
+      if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+    };
+  }, [activeStoryUserIdx, activeSlideIdx, storyPaused, goToNextSlide]);
+
+  const openStory = (userIdx: number) => {
+    setActiveStoryUserIdx(userIdx);
+    setActiveSlideIdx(0);
+    setStoryProgress(0);
+    setStoryPaused(false);
+  };
+
+  const handleStoryReaction = (emoji: string) => {
+    setStoryReaction(emoji);
+    setStoryPaused(true);
+    setTimeout(() => {
+      setStoryReaction(null);
+      setStoryPaused(false);
+    }, 900);
+  };
+
+  const sendStoryReply = () => {
+    if (!storyReply.trim()) return;
+    // In a real app, this would send a message. For now, just show reaction effect.
+    setStoryReaction('💬');
+    setStoryReply('');
+    setTimeout(() => {
+      setStoryReaction(null);
+    }, 900);
+  };
+
+  const handleCreateStory = () => {
+    if (createStoryTab === 'text') {
+      if (!createStoryText.trim()) return;
+      const newSlide: StorySlide = {
+        id: `my-${Date.now()}`,
+        type: 'text',
+        text: createStoryText.trim(),
+        gradient: STORY_GRADIENTS[createStoryGradient],
+        timestamp: 'Just now',
+      };
+      setMyStories(prev => [...prev, newSlide]);
+    } else {
+      if (!createStoryMedia) return;
+      const newSlide: StorySlide = {
+        id: `my-${Date.now()}`,
+        type: createStoryMediaType === 'video' ? 'video' : 'image',
+        mediaUrl: createStoryMedia,
+        caption: createStoryCaption.trim() || undefined,
+        gradient: STORY_GRADIENTS[createStoryGradient],
+        timestamp: 'Just now',
+      };
+      setMyStories(prev => [...prev, newSlide]);
+    }
+    setCreateStoryText('');
+    setCreateStoryGradient(0);
+    setCreateStoryMedia(null);
+    setCreateStoryMediaType(null);
+    setCreateStoryCaption('');
+    setCreateStoryTab('text');
+    setShowCreateStory(false);
+    setShowStorySentToast(true);
+    setTimeout(() => setShowStorySentToast(false), 2800);
+  };
+
+  const handleStoryMediaUpload = (e: React.ChangeEvent<HTMLInputElement>, mediaType: 'image' | 'video') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setCreateStoryMedia(url);
+    setCreateStoryMediaType(mediaType);
+  };
+
+  const removeStoryMedia = () => {
+    setCreateStoryMedia(null);
+    setCreateStoryMediaType(null);
+    if (storyMediaInputRef.current) storyMediaInputRef.current.value = '';
+    if (storyVideoInputRef.current) storyVideoInputRef.current.value = '';
+  };
+
+  /* ─── Camera Functions ─── */
+  const startCamera = useCallback(async (facing: 'user' | 'environment' = 'user') => {
+    try {
+      if (!navigator?.mediaDevices) {
+        throw new Error('Camera API not available. Please ensure you are using a secure connection (HTTPS) and a modern browser.');
+      }
+      // Stop any existing stream first
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
+        audio: true,
+      });
+      cameraStreamRef.current = stream;
+      if (cameraPreviewRef.current) {
+        cameraPreviewRef.current.srcObject = stream;
+      }
+      setCameraActive(true);
+      setCameraFacing(facing);
+    } catch (err: any) {
+      console.error('Camera access error:', err);
+      alert(err.message || 'Camera access was denied. Please allow camera permissions and try again.');
+    }
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(t => t.stop());
+      cameraStreamRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (cameraRecordTimerRef.current) {
+      clearInterval(cameraRecordTimerRef.current);
+      cameraRecordTimerRef.current = null;
+    }
+    setCameraActive(false);
+    setCameraRecording(false);
+    setCameraRecordTime(0);
+  }, []);
+
+  const flipCamera = useCallback(() => {
+    const newFacing = cameraFacing === 'user' ? 'environment' : 'user';
+    startCamera(newFacing);
+  }, [cameraFacing, startCamera]);
+
+  const capturePhoto = useCallback(() => {
+    if (!cameraPreviewRef.current || !cameraCanvasRef.current) return;
+    const video = cameraPreviewRef.current;
+    const canvas = cameraCanvasRef.current;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    // Mirror for front camera
+    if (cameraFacing === 'user') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    setCameraCaptured(dataUrl);
+    setCameraCapturedType('image');
+    stopCamera();
+  }, [cameraFacing, stopCamera]);
+
+  const startRecording = useCallback(() => {
+    if (!cameraStreamRef.current) return;
+    if (typeof MediaRecorder === 'undefined') {
+      alert('Video recording is not supported in your browser.');
+      return;
+    }
+    recordedChunksRef.current = [];
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
+      ? 'video/webm;codecs=vp9,opus'
+      : 'video/webm';
+    const recorder = new MediaRecorder(cameraStreamRef.current, { mimeType });
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      setCameraCaptured(url);
+      setCameraCapturedType('video');
+      stopCamera();
+    };
+    recorder.start(100);
+    mediaRecorderRef.current = recorder;
+    setCameraRecording(true);
+    setCameraRecordTime(0);
+    cameraRecordTimerRef.current = setInterval(() => {
+      setCameraRecordTime(prev => prev + 1);
+    }, 1000);
+  }, [stopCamera]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (cameraRecordTimerRef.current) {
+      clearInterval(cameraRecordTimerRef.current);
+      cameraRecordTimerRef.current = null;
+    }
+    setCameraRecording(false);
+  }, []);
+
+  const discardCameraCapture = useCallback(() => {
+    setCameraCaptured(null);
+    setCameraCapturedType(null);
+    setCameraRecordTime(0);
+  }, []);
+
+  const useCameraCapture = useCallback(() => {
+    if (!cameraCaptured) return;
+    setCreateStoryMedia(cameraCaptured);
+    setCreateStoryMediaType(cameraCapturedType);
+    setCameraCaptured(null);
+    setCameraCapturedType(null);
+    setCreateStoryTab(cameraCapturedType === 'video' ? 'video' : 'photo');
+  }, [cameraCaptured, cameraCapturedType]);
+
+  // Auto-start camera when switching to camera tab
+  useEffect(() => {
+    if (createStoryTab === 'camera' && showCreateStory && !cameraCaptured) {
+      startCamera(cameraFacing);
+    } else if (createStoryTab !== 'camera') {
+      stopCamera();
+    }
+    return () => {
+      // Cleanup on unmount / tab switch
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createStoryTab, showCreateStory]);
+
+  // Cleanup camera when modal closes
+  useEffect(() => {
+    if (!showCreateStory) {
+      stopCamera();
+      setCameraCaptured(null);
+      setCameraCapturedType(null);
+    }
+  }, [showCreateStory, stopCamera]);
+
+  // Handle story reply keydown
+  const handleStoryReplyKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendStoryReply();
+    }
+  };
 
   useEffect(() => {
     const chatId = searchParams.get('chatId');
@@ -386,24 +891,21 @@ function MessagesContent() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               <span>Video</span>
             </button>
-            <button className="msg-info-action-btn">
+            <button className="msg-info-action-btn" onClick={() => setShowMuteToast(true)} style={{ cursor: 'pointer' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
               <span>{activeConversation.muted ? 'Unmute' : 'Mute'}</span>
             </button>
           </div>
           <div className="msg-info-section">
             <h3>Chat Settings</h3>
-            <div className="msg-info-option">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-              <span>Encryption</span>
-              <span className="msg-info-option-value">On</span>
-            </div>
-            <div className="msg-info-option">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div className={`msg-info-option ${activeConversation.vanishMode ? 'active' : ''}`} onClick={toggleVanishMode} style={{ cursor: 'pointer' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={activeConversation.vanishMode ? 'var(--primary)' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
               <span>Vanish Mode</span>
-              <span className="msg-info-option-value">Off</span>
+              <div className={`msg-toggle-switch ${activeConversation.vanishMode ? 'on' : ''}`}>
+                <div className="msg-toggle-slider" />
+              </div>
             </div>
-            <div className="msg-info-option danger">
+            <div className="msg-info-option danger" onClick={() => setShowBlockConfirm(true)} style={{ cursor: 'pointer' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
               <span>Block User</span>
             </div>
@@ -438,33 +940,73 @@ function MessagesContent() {
             onChange={e => setSearchQuery(e.target.value)}
           />
         </div>
-        {/* Online now row */}
+        {/* Story + Online now row */}
         <div className="msg-online-row">
-          <button className="msg-online-avatar-btn add-story-btn">
-            <div className="msg-online-avatar-ring add-story">
-              <div className="msg-add-story-icon-wrapper">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                <div className="msg-add-story-plus">+</div>
-              </div>
+          {/* Your Story */}
+          <div className="msg-online-avatar-btn add-story-btn">
+            <div 
+              className={`msg-online-avatar-ring ${myStories.length > 0 ? 'has-story' : 'add-story'}`}
+              onClick={() => myStories.length > 0 ? openStory(0) : setShowCreateStory(true)}
+              style={{ cursor: 'pointer' }}
+            >
+              {myStories.length > 0 ? (
+                <div className="msg-online-avatar" style={{ background: 'linear-gradient(135deg, #667eea, #764ba2)' }}>✦</div>
+              ) : (
+                <div className="msg-add-story-icon-wrapper">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                </div>
+              )}
+              {/* Always keep the "+" badge reachable for adding more stories */}
+              <div 
+                className="msg-add-story-plus" 
+                onClick={(e) => { e.stopPropagation(); setShowCreateStory(true); }}
+                title="Add to story"
+              >+</div>
             </div>
             <span className="msg-online-name">Your story</span>
-          </button>
-          {conversations.filter(c => c.user.online).map(c => (
-            <button
-              key={c.id}
-              className="msg-online-avatar-btn"
-              onClick={() => setActiveChat(c.id)}
-            >
-              <div className="msg-online-avatar-ring">
-                <div className="msg-online-avatar">{c.user.avatar}</div>
-              </div>
-              <span className="msg-online-dot" />
-              <span className="msg-online-name">{c.user.name.split(' ')[0]}</span>
-            </button>
-          ))}
+          </div>
+          {/* Friends with stories first, then online without stories */}
+          {(() => {
+            const viewable = allViewableStories();
+            const storyUserIds = stories.map(s => s.userId);
+            const friendsWithStories = stories.map((story, idx) => {
+              const conv = conversations.find(c => c.user.id === story.userId);
+              if (!conv) return null;
+              const storyIdx = myStories.length > 0 ? idx + 1 : idx;
+              return (
+                <button
+                  key={`story-${story.userId}`}
+                  className="msg-online-avatar-btn"
+                  onClick={() => openStory(storyIdx)}
+                >
+                  <div className={`msg-online-avatar-ring ${story.seen ? 'story-seen' : 'has-story'}`}>
+                    <div className="msg-online-avatar">{conv.user.avatar}</div>
+                  </div>
+                  {conv.user.online && <span className="msg-online-dot" />}
+                  <span className="msg-online-name">{conv.user.name.split(' ')[0]}</span>
+                </button>
+              );
+            });
+            const onlineWithoutStories = conversations
+              .filter(c => c.user.online && !storyUserIds.includes(c.user.id))
+              .map(c => (
+                <button
+                  key={c.id}
+                  className="msg-online-avatar-btn"
+                  onClick={() => setActiveChat(c.id)}
+                >
+                  <div className="msg-online-avatar-ring">
+                    <div className="msg-online-avatar">{c.user.avatar}</div>
+                  </div>
+                  <span className="msg-online-dot" />
+                  <span className="msg-online-name">{c.user.name.split(' ')[0]}</span>
+                </button>
+              ));
+            return [...friendsWithStories, ...onlineWithoutStories];
+          })()}
         </div>
       </div>
 
@@ -541,7 +1083,7 @@ function MessagesContent() {
     const { user, messages } = activeConversation;
 
     return (
-      <div className={`msg-chat-panel ${activeChat ? 'msg-chat-visible-mobile' : ''}`}>
+      <div className={`msg-chat-panel ${activeChat ? 'msg-chat-visible-mobile' : ''} ${activeConversation.vanishMode ? 'vanish-mode' : ''}`}>
         {/* Chat Header */}
         <div className="msg-chat-header">
           <button className="msg-back-btn" onClick={() => setActiveChat(null)}>
@@ -583,7 +1125,16 @@ function MessagesContent() {
         </div>
 
         {/* Messages Area */}
-        <div className="msg-messages-area">
+        <div className={`msg-messages-area ${activeConversation.vanishMode ? 'vanish-mode' : ''}`}>
+          {activeConversation.vanishMode && (
+            <div className="msg-vanish-notice">
+              <div className="msg-vanish-notice-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <span>Vanish mode is on</span>
+              <p>Seen messages will disappear when you close the chat.</p>
+            </div>
+          )}
           {/* Chat intro */}
           <div className="msg-chat-intro">
             <div className={`msg-intro-avatar-ring ${user.online ? 'online' : ''}`}>
@@ -858,6 +1409,440 @@ function MessagesContent() {
     }
   }, [longPressMsg, showShareMenu]);
 
+  /* ─── STORY VIEWER ─── */
+  const renderStoryViewer = () => {
+    if (activeStoryUserIdx === null) return null;
+    const viewable = allViewableStories();
+    const currentUser = viewable[activeStoryUserIdx];
+    if (!currentUser) return null;
+    const currentSlide = currentUser.slides[activeSlideIdx];
+    if (!currentSlide) return null;
+
+    return (
+      <div className="story-viewer-overlay">
+        <div className="story-viewer-container">
+          {/* Progress bars */}
+          <div className="story-progress-row">
+            {currentUser.slides.map((slide, idx) => (
+              <div
+                key={slide.id}
+                className={`story-progress-bar ${idx < activeSlideIdx ? 'completed' : ''} ${idx > activeSlideIdx ? 'upcoming' : ''}`}
+              >
+                <div
+                  className="story-progress-fill"
+                  style={{
+                    width: idx === activeSlideIdx ? `${storyProgress}%` : idx < activeSlideIdx ? '100%' : '0%',
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Header */}
+          <div className="story-header">
+            <div className="story-header-avatar">{currentUser.userAvatar}</div>
+            <div className="story-header-info">
+              <span className="story-header-name">{currentUser.userName}</span>
+              <span className="story-header-time">{currentSlide.timestamp}</span>
+            </div>
+            <button className="story-close-btn" onClick={closeStoryViewer}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Content */}
+          <div
+            className="story-content-area"
+            onMouseDown={() => setStoryPaused(true)}
+            onMouseUp={() => setStoryPaused(false)}
+            onTouchStart={() => setStoryPaused(true)}
+            onTouchEnd={() => setStoryPaused(false)}
+          >
+            <div
+              className={`story-slide ${currentSlide.type !== 'text' ? 'story-slide-media' : ''}`}
+              key={currentSlide.id}
+              style={{ background: currentSlide.type === 'text' ? currentSlide.gradient : '#000' }}
+            >
+              {currentSlide.type === 'image' && currentSlide.mediaUrl && (
+                <>
+                  <img 
+                    src={currentSlide.mediaUrl} 
+                    alt="Story" 
+                    className="story-media-img" 
+                    draggable={false}
+                  />
+                  {currentSlide.caption && (
+                    <div className="story-media-caption-bar">
+                      <span className="story-media-caption">{currentSlide.caption}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              {currentSlide.type === 'video' && currentSlide.mediaUrl && (
+                <>
+                  <video 
+                    ref={storyVideoRef}
+                    src={currentSlide.mediaUrl} 
+                    className="story-media-video" 
+                    autoPlay 
+                    playsInline
+                    loop
+                  />
+                  {currentSlide.caption && (
+                    <div className="story-media-caption-bar">
+                      <span className="story-media-caption">{currentSlide.caption}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              {currentSlide.type === 'text' && (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  {currentSlide.emoji && <span className="story-slide-emoji">{currentSlide.emoji}</span>}
+                  <span className="story-slide-text">{currentSlide.text}</span>
+                  {currentSlide.caption && <span className="story-slide-caption">{currentSlide.caption}</span>}
+                </div>
+              )}
+            </div>
+
+            {/* Tap zones */}
+            <div className="story-tap-left" onClick={goToPrevSlide} />
+            <div className="story-tap-right" onClick={goToNextSlide} />
+
+            {/* Pause indicator */}
+            {storyPaused && !storyReaction && (
+              <div className="story-paused-indicator">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="6" y="4" width="4" height="16" rx="1" />
+                  <rect x="14" y="4" width="4" height="16" rx="1" />
+                </svg>
+              </div>
+            )}
+
+            {/* Reaction animation */}
+            {storyReaction && (
+              <div className="story-reaction-toast">{storyReaction}</div>
+            )}
+          </div>
+
+          {/* Footer - Reply + reactions */}
+          {currentUser.userId !== 'me' && (
+            <div className="story-footer">
+              <div className="story-quick-reactions">
+                {['❤️', '😂', '😮', '🔥'].map(emoji => (
+                  <button key={emoji} className="story-quick-reaction-btn" onClick={() => handleStoryReaction(emoji)}>
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+              <div className="story-reply-row">
+                <input
+                  ref={storyReplyInputRef}
+                  type="text"
+                  className="story-reply-input"
+                  placeholder={`Reply to ${currentUser.userName.split(' ')[0]}...`}
+                  value={storyReply}
+                  onChange={e => setStoryReply(e.target.value)}
+                  onKeyDown={handleStoryReplyKeyDown}
+                  onFocus={() => setStoryPaused(true)}
+                  onBlur={() => setStoryPaused(false)}
+                />
+                <button className="story-reply-send-btn" onClick={sendStoryReply}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  /* ─── CREATE STORY MODAL ─── */
+  const renderCreateStoryModal = () => {
+    if (!showCreateStory) return null;
+
+    const canPost = createStoryTab === 'text' 
+      ? createStoryText.trim().length > 0 
+      : createStoryTab === 'camera'
+        ? false
+        : createStoryMedia !== null;
+
+    const closeCreateModal = () => {
+      setShowCreateStory(false);
+      removeStoryMedia();
+      setCreateStoryTab('text');
+      stopCamera();
+      setCameraCaptured(null);
+      setCameraCapturedType(null);
+    };
+
+    return (
+      <div className="story-create-overlay" onClick={closeCreateModal}>
+        <div className="story-create-sheet" onClick={e => e.stopPropagation()}>
+          <div className="story-create-handle" />
+          <h2 className="story-create-title">Create Story</h2>
+          <p className="story-create-subtitle">Share a moment with your friends</p>
+
+          {/* Hidden file inputs */}
+          <input
+            type="file"
+            ref={storyMediaInputRef}
+            style={{ display: 'none' }}
+            accept="image/*"
+            onChange={e => handleStoryMediaUpload(e, 'image')}
+          />
+          <input
+            type="file"
+            ref={storyVideoInputRef}
+            style={{ display: 'none' }}
+            accept="video/*"
+            onChange={e => handleStoryMediaUpload(e, 'video')}
+          />
+
+          {/* Tab Switcher */}
+          <div className="story-create-tabs">
+            <button 
+              className={`story-create-tab ${createStoryTab === 'text' ? 'active' : ''}`}
+              onClick={() => setCreateStoryTab('text')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
+              </svg>
+              <span>Text</span>
+            </button>
+            <button 
+              className={`story-create-tab ${createStoryTab === 'photo' ? 'active' : ''}`}
+              onClick={() => setCreateStoryTab('photo')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+              </svg>
+              <span>Photo</span>
+            </button>
+            <button 
+              className={`story-create-tab ${createStoryTab === 'video' ? 'active' : ''}`}
+              onClick={() => setCreateStoryTab('video')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+              </svg>
+              <span>Video</span>
+            </button>
+            <button 
+              className={`story-create-tab ${createStoryTab === 'camera' ? 'active' : ''}`}
+              onClick={() => setCreateStoryTab('camera')}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span>Camera</span>
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {createStoryTab === 'text' && (
+            <>
+              <div className="story-create-input-section">
+                <textarea
+                  className="story-create-textarea"
+                  placeholder="What's on your mind? ✨"
+                  value={createStoryText}
+                  onChange={e => setCreateStoryText(e.target.value)}
+                  maxLength={120}
+                />
+              </div>
+              <span className="story-create-label">Background</span>
+              <div className="story-gradient-grid">
+                {STORY_GRADIENTS.map((gradient, idx) => (
+                  <div
+                    key={idx}
+                    className={`story-gradient-option ${createStoryGradient === idx ? 'selected' : ''}`}
+                    style={{ background: gradient }}
+                    onClick={() => setCreateStoryGradient(idx)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          {createStoryTab === 'photo' && (
+            <div className="story-media-upload-section">
+              {!createStoryMedia ? (
+                <button 
+                  className="story-media-dropzone"
+                  onClick={() => storyMediaInputRef.current?.click()}
+                >
+                  <div className="story-dropzone-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </div>
+                  <span className="story-dropzone-title">Add a Photo</span>
+                  <span className="story-dropzone-hint">Tap to select from your gallery</span>
+                </button>
+              ) : (
+                <div className="story-media-preview-wrap">
+                  <img src={createStoryMedia} alt="Preview" className="story-media-preview" />
+                  <button className="story-media-remove-btn" onClick={removeStoryMedia}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <textarea
+                className="story-create-textarea story-caption-input"
+                placeholder="Add a caption... ✍️"
+                value={createStoryCaption}
+                onChange={e => setCreateStoryCaption(e.target.value)}
+                maxLength={100}
+                rows={2}
+              />
+            </div>
+          )}
+
+          {createStoryTab === 'video' && (
+            <div className="story-media-upload-section">
+              {!createStoryMedia ? (
+                <button 
+                  className="story-media-dropzone"
+                  onClick={() => storyVideoInputRef.current?.click()}
+                >
+                  <div className="story-dropzone-icon video">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                  </div>
+                  <span className="story-dropzone-title">Add a Video</span>
+                  <span className="story-dropzone-hint">Tap to select from your gallery</span>
+                </button>
+              ) : (
+                <div className="story-media-preview-wrap">
+                  <video src={createStoryMedia} className="story-media-preview" muted autoPlay loop playsInline />
+                  <button className="story-media-remove-btn" onClick={removeStoryMedia}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+              <textarea
+                className="story-create-textarea story-caption-input"
+                placeholder="Add a caption... ✍️"
+                value={createStoryCaption}
+                onChange={e => setCreateStoryCaption(e.target.value)}
+                maxLength={100}
+                rows={2}
+              />
+            </div>
+          )}
+
+          {/* Camera Tab */}
+          {createStoryTab === 'camera' && (
+            <div className="story-camera-section">
+              {/* Hidden canvas for photo capture */}
+              <canvas ref={cameraCanvasRef} style={{ display: 'none' }} />
+
+              {!cameraCaptured ? (
+                <>
+                  <div className="story-camera-viewport">
+                    <video
+                      ref={cameraPreviewRef}
+                      className={`story-camera-preview ${cameraFacing === 'user' ? 'mirrored' : ''}`}
+                      autoPlay
+                      playsInline
+                      muted
+                    />
+                    {!cameraActive && (
+                      <div className="story-camera-loading">
+                        <div className="story-camera-loading-spinner" />
+                        <span>Starting camera...</span>
+                      </div>
+                    )}
+                    {cameraRecording && (
+                      <div className="story-camera-rec-badge">
+                        <span className="story-rec-dot" />
+                        <span>{String(Math.floor(cameraRecordTime / 60)).padStart(2, '0')}:{String(cameraRecordTime % 60).padStart(2, '0')}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="story-camera-controls">
+                    <button className="story-camera-flip-btn" onClick={flipCamera} title="Flip camera">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                      </svg>
+                    </button>
+                    {!cameraRecording ? (
+                      <button className="story-camera-shutter" onClick={capturePhoto}>
+                        <div className="story-shutter-inner" />
+                      </button>
+                    ) : (
+                      <button className="story-camera-shutter recording" onClick={stopRecording}>
+                        <div className="story-shutter-stop" />
+                      </button>
+                    )}
+                    {!cameraRecording ? (
+                      <button className="story-camera-record-btn" onClick={startRecording} title="Record video">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                      </button>
+                    ) : (
+                      <div style={{ width: 46 }} />
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="story-camera-viewport captured">
+                    {cameraCapturedType === 'image' ? (
+                      <img src={cameraCaptured} alt="Captured" className="story-camera-capture-preview" />
+                    ) : (
+                      <video src={cameraCaptured} className="story-camera-capture-preview" autoPlay loop playsInline muted />
+                    )}
+                  </div>
+                  <div className="story-camera-review-actions">
+                    <button className="story-camera-retake-btn" onClick={discardCameraCapture}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                      <span>Retake</span>
+                    </button>
+                    <button className="story-camera-use-btn" onClick={useCameraCapture}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Use {cameraCapturedType === 'video' ? 'Video' : 'Photo'}</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {createStoryTab !== 'camera' && (
+            <button
+              className="story-create-post-btn"
+              disabled={!canPost}
+              onClick={handleCreateStory}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              <span>Share to Story</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="msg-page-wrapper">
       <div className="msg-container">
@@ -866,29 +1851,113 @@ function MessagesContent() {
         {renderChatInfo()}
       </div>
 
+      {/* Story Viewer */}
+      {renderStoryViewer()}
+
+      {/* Create Story Modal */}
+      {renderCreateStoryModal()}
+
       {showFutureModal && (
-        <div className="logout-overlay" onClick={() => setShowFutureModal(false)}>
-          <div className="logout-modal" onClick={e => e.stopPropagation()}>
-            <div className="logout-modal-header">
-              <div className="logout-modal-icon" style={{ color: '#F59E0B', background: '#FEF3C7' }}>
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                   <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+        <div className="msg-future-overlay" onClick={() => setShowFutureModal(false)}>
+          <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
+            <div className="msg-future-handle" />
+            <div className="msg-future-content">
+              <div className="msg-future-icon-wrapper">
+                <div className="msg-future-icon-glow" />
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M12 8v4"/><path d="M12 16h.01"/>
                 </svg>
               </div>
-              <h2 className="logout-modal-title">Coming Soon!</h2>
-              <p className="logout-modal-desc">
-                We're currently scaling our infrastructure to support high-quality voice and video calls. This feature will be available in a future update.
+              <h2 className="msg-future-title">Premium Feature</h2>
+              <p className="msg-future-desc">
+                We're currently scaling our infrastructure to support <strong>HD Voice & Video calls</strong>. This encrypted communication suite will be available in a future update.
               </p>
-            </div>
-            <div className="logout-modal-actions">
               <button 
-                className="logout-confirm-btn" 
-                style={{ background: 'var(--primary)', width: '100%' }}
+                className="msg-future-btn" 
                 onClick={() => setShowFutureModal(false)}
               >
-                Got it
+                <span>Got it</span>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {showBlockConfirm && activeConversation && (
+        <div className="msg-future-overlay" onClick={() => setShowBlockConfirm(false)}>
+          <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
+            <div className="msg-future-handle" />
+            <div className="msg-future-content">
+              <div className="msg-future-icon-wrapper" style={{ color: '#EF4444', marginBottom: '8px' }}>
+                <div className="msg-future-icon-glow" style={{ backgroundColor: '#EF4444' }} />
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+                </svg>
+              </div>
+              <h2 className="msg-future-title">Block {activeConversation.user.name}?</h2>
+              <p className="msg-future-desc">
+                They will no longer be able to message you or find your profile. You can unblock them anytime in settings.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', width: '100%', marginTop: '12px' }}>
+                <button 
+                  className="msg-future-btn" 
+                  style={{ background: 'var(--surface-2)', color: 'var(--text-primary)', boxShadow: 'none' }}
+                  onClick={() => setShowBlockConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="msg-future-btn" 
+                  style={{ background: '#EF4444', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)' }}
+                  onClick={handleBlockUser}
+                >
+                  <span>Block User</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMuteToast && (
+        <div className="msg-mute-toast">
+          <div className="msg-mute-toast-content">
+             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+             </svg>
+             <span>Muting features are undergoing maintenance</span>
+          </div>
+        </div>
+      )}
+
+      {showVanishToast && activeConversation && (
+        <div className="msg-vanish-toast">
+          <div className="msg-vanish-toast-content">
+            <div className={`msg-vanish-toast-icon ${activeConversation.vanishMode ? 'on' : 'off'}`}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                {activeConversation.vanishMode ? (
+                   <><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>
+                ) : (
+                   <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>
+                )}
+              </svg>
+            </div>
+            <span>Vanish Mode {activeConversation.vanishMode ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Story Sent Toast */}
+      {showStorySentToast && (
+        <div className="story-sent-toast">
+          <div className="story-sent-toast-content">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            <span>Story shared successfully!</span>
           </div>
         </div>
       )}

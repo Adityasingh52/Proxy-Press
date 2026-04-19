@@ -21,7 +21,7 @@
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 20px 0 16px; /* Increased top padding matching Edit Profile */
+  padding: 20px 0 24px; /* Increased bottom padding for better rhythm */
 }
 
 .settings-back-btn {
@@ -313,4 +313,149 @@
 
 .notification-toggle.active .toggle-thumb {
   left: 22px;
+}
+
+/* ─────────────────────────────────────────
+   APP DETAILS & STORY
+   ───────────────────────────────────────── */
+
+.about-hero {
+  text-align: center;
+  padding: 40px 20px;
+  background: linear-gradient(135deg, var(--primary-light), var(--surface));
+  border-radius: 32px;
+  margin-bottom: 24px;
+  border: 1px solid var(--border);
+}
+
+.about-app-icon {
+  width: 80px;
+  height: 80px;
+  background: white;
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.08);
+  color: var(--primary);
+}
+
+.about-app-name {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.about-app-tagline {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.about-story-section {
+  padding: 0 4px;
+  margin-bottom: 32px;
+}
+
+.about-story-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.about-story-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  background: var(--surface);
+  padding: 24px;
+  border-radius: 24px;
+  border: 1.5px solid var(--border);
+}
+
+.about-story-text b {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.about-features-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.feature-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  padding: 16px;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.feature-card-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.feature-card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.feature-card-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.about-footer {
+  text-align: center;
+  padding: 20px 0 40px;
+  border-top: 1.5px solid var(--border);
+  margin-top: 20px;
+}
+
+.about-version {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-subtle);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.about-credits {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Intro Section */
+.about-intro-section {
+  padding: 24px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 24px;
+  margin-bottom: 32px;
+}
+
+.about-intro-text {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  font-weight: 500;
 }

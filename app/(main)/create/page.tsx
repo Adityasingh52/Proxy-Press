@@ -403,41 +403,64 @@ export default function CreatePostPage() {
                 <div style={{ fontWeight: 700, fontSize: '15px', color: 'var(--text-primary)' }}>Alex Johnson</div>
                 <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>MIT Campus Press · just now</div>
               </div>
-              {category && (
-                <span style={{
-                  padding: '4px 12px', borderRadius: 'var(--radius-full)',
-                  fontSize: '11px', fontWeight: 800, textTransform: 'uppercase',
-                  background: 'var(--primary-light)', color: 'var(--primary)',
-                  letterSpacing: '0.02em'
-                }}>
-                  {categoryEmojis[category]} {category}
-                </span>
-              )}
             </div>
 
-            {/* Image */}
-            <div style={{ marginTop: '14px', borderTop: '0.5px solid var(--border)', borderBottom: '0.5px solid var(--border)' }}>
-              {imageFile ? (
-                <img src={imageFile} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover' }} />
-              ) : (
-                <div style={{
-                  width: '100%', aspectRatio: '16/9',
-                  background: 'linear-gradient(135deg, var(--surface-2) 0%, var(--border-light) 100%)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexDirection: 'column', gap: '10px',
-                }}>
-                  <div style={{ fontSize: '40px', opacity: 0.3 }}>🖼️</div>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Cover image preview</span>
+            {/* Image Wrapper with Overlays */}
+            {(() => {
+              const catData = categories.find(c => c.name === category);
+              const catColor = catData?.color || 'var(--primary)';
+              
+              return (
+                <div style={{ position: 'relative', marginTop: '14px', overflow: 'hidden' }}>
+                  {/* Overlaid Category */}
+                  {category && (
+                    <span style={{
+                      position: 'absolute', top: '12px', left: '12px', zIndex: 10,
+                      padding: '4px 12px', borderRadius: '100px',
+                      fontSize: '10px', fontWeight: 800, textTransform: 'uppercase',
+                      background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+                      border: `1px solid ${catColor}cc`, color: '#fff',
+                      letterSpacing: '0.05em', boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                    }}>
+                      {categoryEmojis[category]} {category}
+                    </span>
+                  )}
+                  
+                  {imageFile ? (
+                    <img src={imageFile} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
+                  ) : (
+                    <div style={{
+                      width: '100%', aspectRatio: '16/9',
+                      background: 'linear-gradient(135deg, var(--surface-2) 0%, var(--border-light) 100%)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexDirection: 'column', gap: '10px',
+                    }}>
+                      <div style={{ fontSize: '40px', opacity: 0.3 }}>🖼️</div>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Cover image preview</span>
+                    </div>
+                  )}
+
+                  {/* Headline Overlay */}
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%)',
+                    padding: '24px 16px 16px', zIndex: 5
+                  }}>
+                    <h2 style={{ 
+                      fontWeight: 800, fontSize: '18px', lineHeight: 1.3, 
+                      color: title ? '#fff' : 'rgba(255,255,255,0.5)', 
+                      margin: 0, textShadow: '0 1px 3px rgba(0,0,0,0.5)' 
+                    }}>
+                      {title || 'Your headline will appear here...'}
+                    </h2>
+                  </div>
                 </div>
-              )}
-            </div>
+              );
+            })()}
 
-            {/* Content */}
+            {/* Content (Description) */}
             <div style={{ padding: '16px' }}>
-              <h2 style={{ fontWeight: 800, fontSize: '20px', lineHeight: 1.3, color: title ? 'var(--text-primary)' : 'var(--text-subtle)', marginBottom: '10px', minHeight: '26px' }}>
-                {title || 'Your headline will appear here...'}
-              </h2>
-              <p style={{ fontSize: '15px', color: description ? 'var(--text-muted)' : 'var(--text-subtle)', lineHeight: 1.6, minHeight: '48px' }}>
+              <p style={{ fontSize: '14px', color: description ? 'var(--text-muted)' : 'var(--text-subtle)', lineHeight: 1.6, minHeight: '44px', margin: 0 }}>
                 {description || 'Your description will appear here...'}
               </p>
             </div>
