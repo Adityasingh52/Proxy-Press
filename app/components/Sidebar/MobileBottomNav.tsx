@@ -66,18 +66,23 @@ const navItems = [
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadCount() {
+    async function loadData() {
       try {
-        const count = await getUnreadMessageCountAction();
+        const [count, user] = await Promise.all([
+          getUnreadMessageCountAction(),
+          import('@/lib/actions').then(m => m.getCurrentUser())
+        ]);
         setUnreadCount(count);
+        if (user) setCurrentUserId(user.id);
       } catch (e) {
-        console.error('Failed to load unread count', e);
+        console.error('Failed to load nav data', e);
       }
     }
-    loadCount();
-    const interval = setInterval(loadCount, 15000); // Poll every 15s
+    loadData();
+    const interval = setInterval(loadData, 15000); // Poll every 15s
     return () => clearInterval(interval);
   }, [pathname]);
 
@@ -85,6 +90,13 @@ export default function MobileBottomNav() {
     <nav className="mobile-bottom-nav">
       <div className="mobile-nav-container">
         {navItems.map((item) => {
+          let href = item.href;
+          
+          // Optimization: Link directly to the user's profile to avoid redirects
+          if (href === '/profile' && currentUserId) {
+            href = `/profile/${currentUserId}`;
+          }
+
           const isActive = item.href === '/' 
             ? pathname === '/' 
             : pathname.startsWith(item.href);
@@ -95,7 +107,7 @@ export default function MobileBottomNav() {
             return (
               <div key={item.href} className="mobile-nav-item mobile-nav-create-wrapper">
                 <Link
-                  href={item.href}
+                  href={href}
                   className="mobile-nav-create-btn"
                 >
                   {item.icon(isActive)}
@@ -107,7 +119,7 @@ export default function MobileBottomNav() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">

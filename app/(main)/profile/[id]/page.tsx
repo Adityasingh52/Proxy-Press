@@ -5,12 +5,7 @@ import { notFound } from 'next/navigation';
 export default async function ProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   
-  // High-performance server-side fetch
-  const initialData = await getProfileData(id);
-
-  if (!initialData) {
-    notFound();
-  }
-
-  return <ProfileClient id={id} initialData={initialData} />;
+  // We remove the blocking 'await' here to make the page mount INSTANTLY.
+  // ProfileClient handles its own caching and background refreshing.
+  return <ProfileClient id={id} initialData={null} />;
 }
