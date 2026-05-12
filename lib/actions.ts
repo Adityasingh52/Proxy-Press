@@ -10,28 +10,38 @@ import { eq, and, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import { withCache, redis } from './redis';
 
 export async function getInitialData(userId?: string) {
-  const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
-    queries.getPosts(userId),
-    queries.getUsers(),
-    queries.getCategories(),
-    queries.getTrendingTopics(),
-    queries.getAnnouncements(),
-    queries.getNotifications(userId),
-    queries.getStories(userId),
-  ]);
+  const fetcher = async () => {
+    const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
+      queries.getPosts(userId),
+      queries.getUsers(),
+      queries.getCategories(),
+      queries.getTrendingTopics(),
+      queries.getAnnouncements(),
+      queries.getNotifications(userId),
+      queries.getStories(userId),
+    ]);
+
+    return {
+      posts,
+      authors,
+      categories,
+      trendingTopics,
+      announcements,
+      notifications,
+      stories,
+    };
+  };
+
+  // Only cache the public feed (no userId) to save memory
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_initial_data', fetcher, 300); // 5 mins cache for public
 
   // Deep clone to ensure all data is perfectly serializable POJOs for RSC stream
-  return JSON.parse(JSON.stringify({
-    posts,
-    authors,
-    categories,
-    trendingTopics,
-    announcements,
-    notifications,
-    stories,
-  }));
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function getStories(userId?: string) {
@@ -188,6 +198,9 @@ export async function createPost(data: {
   } catch (err) {
     console.error('Failed to create new post notifications:', err);
   }
+
+  // Invalidate Public Cache
+  await redis.del('public_initial_data').catch(() => null);
 
   return { success: true, id };
 }
@@ -1621,6 +1634,9 @@ export async function updatePost(postId: string, data: {
 
   revalidatePath('/');
   revalidatePath(`/article/${post.slug}`);
+  
+  // Invalidate Public Cache
+  await redis.del('public_initial_data').catch(() => null);
   
   return { success: true };
 }
