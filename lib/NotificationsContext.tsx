@@ -27,7 +27,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     async function load() {
       try {
         const dbNotifs = await getNotificationsAction();
-        const mapped = dbNotifs.map((n: any) => ({
+        const mapped: Notification[] = dbNotifs.map((n: any) => ({
           id: n.id,
           type: n.type,
           actor: n.actor?.name || 'Someone',

@@ -172,7 +172,7 @@ export const messages = pgTable('messages', {
   timestamp: text('timestamp').notNull(),
   seen: boolean('seen').default(false),
   type: text('type').notNull(), // 'text', 'image', 'heart', 'voice', 'video', 'file'
-  replyTo: text('reply_to').references(() => messages.id),
+  replyTo: text('reply_to').references((): any => messages.id),
   attachment: text('attachment'),
   expiresAt: timestamp('expires_at', { mode: 'date' }), // Timestamp when message should be deleted
   isEdited: boolean('is_edited').default(false),
@@ -267,7 +267,7 @@ export const postComments = pgTable('post_comments', {
   postId: text('post_id').notNull().references(() => posts.id),
   userId: text('user_id').notNull().references(() => users.id),
   text: text('text').notNull(),
-  parentId: text('parent_id').references(() => postComments.id),
+  parentId: text('parent_id').references((): any => postComments.id),
   createdAt: text('created_at').notNull(), // ISO string
 });
 

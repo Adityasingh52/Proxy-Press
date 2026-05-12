@@ -180,7 +180,7 @@ export async function createPost(data: {
         };
       }
       return null;
-    }).filter(n => n !== null);
+    }).filter((n: any) => n !== null);
 
     if (notificationsToInsert.length > 0) {
       await db.insert(schema.notifications).values(notificationsToInsert as any);
@@ -495,7 +495,7 @@ export async function togglePostLike(postId: string, userId: string) {
         with: { author: true }
       });
 
-      if (post && post.authorId !== userId && post.author?.notifyLikes) {
+      if (post && post.authorId !== userId && (post.author as any)?.notifyLikes) {
         // Use a deterministic ID to avoid race conditions (duplicates from rapid clicking)
         const notificationId = `like-${postId}-${userId}`;
         
@@ -535,7 +535,7 @@ export async function addPostComment(data: {
   if (!post) throw new Error('Post not found');
 
   // 2. Check comment privacy
-  const privacy = post.author?.commentPrivacy || 'Everyone';
+  const privacy = (post.author as any)?.commentPrivacy || 'Everyone';
   
   if (privacy === 'No One') {
     throw new Error('Comments are disabled for this account');
@@ -545,8 +545,8 @@ export async function addPostComment(data: {
     // Check if post author follows the commenter
     const follow = await db.query.follows.findFirst({
       where: and(
-        eq(schema.follows.followerId, post.authorId),
-        eq(schema.follows.followingId, data.userId)
+        eq(schema.follows.followerId, post.authorId as string),
+        eq(schema.follows.followingId, data.userId as string)
       )
     });
     if (!follow) {
@@ -572,7 +572,7 @@ export async function addPostComment(data: {
 
   // Create Notification for Post Author
   try {
-    if (post && post.authorId !== data.userId && post.author?.notifyComments) {
+    if (post && post.authorId !== data.userId && (post.author as any)?.notifyComments) {
       await db.insert(schema.notifications).values({
         id: `ntf-c-${id}`, 
         userId: post.authorId,
