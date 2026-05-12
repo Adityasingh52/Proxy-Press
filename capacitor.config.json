@@ -7,9 +7,10 @@
     "cleartext": true
   },
   "android": {
-    "backgroundColor": "#000000",
+    "backgroundColor": "#ffffff",
     "allowMixedContent": true,
-    "captureInput": true
+    "captureInput": true,
+    "androidScheme": "https"
   },
   "ios": {
     "contentInset": "always"

@@ -30,8 +30,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [isMe, setIsMe] = useState(initialData?.currentUserId === initialData?.user?.id);
   const [userPosts, setUserPosts] = useState<any[]>(initialData?.posts || []);
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
-  const [followersCount, setFollowersCount] = useState(initialData?.followCounts?.followers || 0);
-  const [followingCount, setFollowingCount] = useState(initialData?.followCounts?.following || 0);
+  const [followersCount, setFollowersCount] = useState<number>(initialData?.followCounts?.followers || 0);
+  const [followingCount, setFollowingCount] = useState<number>(initialData?.followCounts?.following || 0);
   const [isRequested, setIsRequested] = useState(initialData?.isRequested || false);
   const [isLoading, setIsLoading] = useState(!initialData);
   const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
@@ -225,7 +225,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     } catch (err) {
        setIsFollowing(false);
        setIsRequested(false);
-       if (!user.isPrivate) setFollowersCount(prev => prev - 1);
+       if (!user.isPrivate) setFollowersCount((prev: number) => prev - 1);
        setToast({ message: 'Failed to follow user', type: 'danger' });
     }
   };
@@ -259,7 +259,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     const newFollowingIds = new Set(myFollowingIds);
     newFollowingIds.add(targetUser.id);
     setMyFollowingIds(newFollowingIds);
-    if (isMe) setFollowingCount(prev => prev + 1);
+    if (isMe) setFollowingCount((prev: number) => prev + 1);
     try {
       const result = await toggleFollow(targetUser.id);
       if (!result.success) throw new Error();
@@ -278,7 +278,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
       newFollowingIds.delete(targetId);
       setMyFollowingIds(newFollowingIds);
       if (isMe) {
-        setFollowingCount(prev => prev - 1);
+        setFollowingCount((prev: number) => prev - 1);
         if (showFollowModal?.type === 'following') setFollowList(prev => prev.filter(u => u.id !== targetId));
       }
       try {
@@ -291,12 +291,13 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     } else {
       setIsFollowing(false);
       setFollowersCount(prev => prev - 1);
+      setFollowersCount((prev: number) => prev - 1);
       try {
         const result = await toggleFollow(targetId);
         if (!result.success) throw new Error();
       } catch (err) {
          setIsFollowing(true);
-         setFollowersCount(prev => prev + 1);
+         setFollowersCount((prev: number) => prev + 1);
          setToast({ message: 'Failed to update follow status', type: 'danger' });
       }
     }
