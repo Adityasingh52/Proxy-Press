@@ -1,16 +1,19 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import '../settings.css';
+import { getBlockedUsers, getCurrentUser, updateAccountPrivacy, getFollowRequests, respondToFollowRequest, updateActivityStatus } from '@/lib/actions';
 
 export default function PrivacySettingsPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showConfirmActivity, setShowConfirmActivity] = useState(false);
   const [showFutureModal, setShowFutureModal] = useState(false);
+  const [futureModalType, setFutureModalType] = useState<'data' | 'ads'>('data');
   const [blockedCount, setBlockedCount] = useState(0);
+  const [followRequests, setFollowRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [privacy, setPrivacy] = useState({
-    // ... same as before
     account: {
       privateAccount: false,
       activityStatus: true,
@@ -32,14 +35,40 @@ export default function PrivacySettingsPage() {
       main.classList.add('no-top-padding');
     }
 
-    const saved = localStorage.getItem('blockedUsers');
-    if (saved) {
+    async function loadData() {
       try {
-        setBlockedCount(JSON.parse(saved).length);
+        const [user, users, requests] = await Promise.all([
+          getCurrentUser(),
+          getBlockedUsers(),
+          getFollowRequests()
+        ]);
+        
+        if (user) {
+          setPrivacy({
+            account: {
+              privateAccount: !!user.isPrivate,
+              activityStatus: !!user.showActivityStatus,
+            },
+            interactions: {
+              comments: user.commentPrivacy || 'Everyone',
+              mentions: user.mentionPrivacy || 'Everyone',
+              tags: 'Everyone',
+            },
+            data: {
+              personalizedAds: true,
+              downloadData: false,
+            }
+          });
+        }
+        setBlockedCount(users.length);
+        setFollowRequests(requests);
       } catch (e) {
-        console.error(e);
+        console.error('Failed to load privacy data:', e);
+      } finally {
+        setLoading(false);
       }
     }
+    loadData();
 
     return () => {
       if (main) main.classList.remove('no-top-padding');
@@ -55,6 +84,11 @@ export default function PrivacySettingsPage() {
       setShowConfirmActivity(true);
       return;
     }
+    if (key === 'personalizedAds') {
+      setFutureModalType('ads');
+      setShowFutureModal(true);
+      return;
+    }
     setPrivacy(prev => {
       const categoryObj = prev[category] as Record<string, any>;
       return {
@@ -67,26 +101,56 @@ export default function PrivacySettingsPage() {
     });
   };
 
-  const confirmTogglePrivate = () => {
+  const confirmTogglePrivate = async () => {
+    const newValue = !privacy.account.privateAccount;
     setPrivacy(prev => ({
       ...prev,
       account: {
         ...prev.account,
-        privateAccount: !prev.account.privateAccount
+        privateAccount: newValue
       }
     }));
     setShowConfirmModal(false);
+    
+    try {
+      await updateAccountPrivacy(newValue);
+    } catch (err) {
+      console.error('Failed to update privacy:', err);
+      // Revert on error
+      setPrivacy(prev => ({
+        ...prev,
+        account: {
+          ...prev.account,
+          privateAccount: !newValue
+        }
+      }));
+    }
   };
 
-  const confirmToggleActivity = () => {
+  const confirmToggleActivity = async () => {
+    const newValue = !privacy.account.activityStatus;
     setPrivacy(prev => ({
       ...prev,
       account: {
         ...prev.account,
-        activityStatus: !prev.account.activityStatus
+        activityStatus: newValue
       }
     }));
     setShowConfirmActivity(false);
+
+    try {
+      await updateActivityStatus(newValue);
+    } catch (err) {
+      console.error('Failed to update activity status:', err);
+      // Revert on error
+      setPrivacy(prev => ({
+        ...prev,
+        account: {
+          ...prev.account,
+          activityStatus: !newValue
+        }
+      }));
+    }
   };
 
   return (
@@ -128,6 +192,13 @@ export default function PrivacySettingsPage() {
               value={`${blockedCount} Users`} 
               href="/settings/privacy/blocked" 
             />
+            {privacy.account.privateAccount && (
+              <LinkItem 
+                label="Follow Requests" 
+                value={`${followRequests.length} pending`} 
+                href="/settings/privacy/requests" 
+              />
+            )}
           </div>
         </div>
 
@@ -140,7 +211,7 @@ export default function PrivacySettingsPage() {
               active={privacy.data.personalizedAds} 
               onToggle={() => toggleSetting('data', 'personalizedAds')} 
             />
-            <div className="settings-item" style={{ cursor: 'pointer' }} onClick={() => setShowFutureModal(true)}>
+            <div className="settings-item" style={{ cursor: 'pointer' }} onClick={() => { setFutureModalType('data'); setShowFutureModal(true); }}>
                 <div className="settings-item-content">
                   <div className="settings-item-text">
                     <span className="settings-item-label" style={{ color: 'var(--primary)', fontWeight: 700 }}>Download My Data</span>
@@ -227,7 +298,9 @@ export default function PrivacySettingsPage() {
               </div>
               <h2 className="logout-modal-title">Coming Soon!</h2>
               <p className="logout-modal-desc">
-                We're working hard on the data export feature. This feature will be available in a future update.
+                {futureModalType === 'data' 
+                  ? "We're working hard on the data export feature. This feature will be available in a future update."
+                  : "Personalized advertising preferences are coming in a future update to help you control your ad experience."}
               </p>
             </div>
             <div className="logout-modal-actions">
@@ -242,6 +315,7 @@ export default function PrivacySettingsPage() {
           </div>
         </div>
       )}
+
     </div>
   );
 }

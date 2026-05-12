@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, use, useEffect } from 'react';
+import { useState, use, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { getPostBySlug as getMockPostBySlug, getRelatedPosts as getMockRelatedPosts, posts as mockPosts } from '@/lib/data';
 import PostCard from '@/app/components/Feed/PostCard';
-import { getPostBySlug, getPostDetail, togglePostLike, togglePostSave, addPostComment, toggleCommentLike as toggleCommentLikeAction } from '@/lib/actions';
+import { getPostDetail, togglePostLike, togglePostSave, addPostComment, toggleCommentLike as toggleCommentLikeAction, getCurrentUser } from '@/lib/actions';
+import './article-detail.css';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -13,6 +15,7 @@ const categoryColors: Record<string, string> = {
 
 export default function ArticleDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const resolvedParams = use(params);
+  const router = useRouter();
   const [post, setPost] = useState<any>(null);
   const [related, setRelated] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -25,11 +28,38 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
   const [activeReplyId, setActiveReplyId] = useState<number | null>(null);
   const [replyText, setReplyText] = useState('');
   const [comments, setComments] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [canComment, setCanComment] = useState(true);
+  const [scrolledPastTitle, setScrolledPastTitle] = useState(false);
+  const headlineRef = useRef<HTMLHeadingElement>(null);
+
+  // Track scroll to show/hide title in the sticky header
+  useEffect(() => {
+    const mainContent = document.getElementById('main-content');
+    if (!mainContent) return;
+
+    const handleScroll = () => {
+      if (headlineRef.current) {
+        const rect = headlineRef.current.getBoundingClientRect();
+        setScrolledPastTitle(rect.bottom < 60);
+      }
+    };
+
+    mainContent.addEventListener('scroll', handleScroll, { passive: true });
+    return () => mainContent.removeEventListener('scroll', handleScroll);
+  }, [post]);
 
   useEffect(() => {
     async function loadPost() {
       try {
-        const data = await getPostDetail(resolvedParams.slug);
+        const [data, user] = await Promise.all([
+          getPostDetail(resolvedParams.slug),
+          getCurrentUser()
+        ]);
+        
+        setCurrentUser(user);
+        const userId = user?.id || null;
+
         if (data && data.post) {
           // Adapt DB post to UI format
           const adaptedPost = {
@@ -40,10 +70,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
               posts: data.post.author.postsCount,
               saved: data.post.author.savedCount,
             },
-            isLiked: Array.isArray(data.post.likesList) ? data.post.likesList.some((l: any) => l.userId === 'u0') : false,
-            isSaved: Array.isArray(data.post.savedList) ? data.post.savedList.some((s: any) => s.userId === 'u0') : false,
+            isLiked: Array.isArray(data.post.likesList) && userId ? data.post.likesList.some((l: any) => l.userId === userId) : false,
+            isSaved: Array.isArray(data.post.savedList) && userId ? data.post.savedList.some((s: any) => s.userId === userId) : false,
           };
           setPost(adaptedPost);
+          setCanComment(data.canComment ?? true);
           
           if (data.related) {
             setRelated(data.related.map((rp: any) => ({
@@ -58,10 +89,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
               flatComments.push({
                 id: c.id,
                 author: c.user?.name || 'User',
+                user: c.user,
                 text: c.text,
                 time: formatTimeAgo(c.createdAt),
                 likes: c.likes?.length || 0,
-                isLiked: c.likes?.some((l: any) => l.userId === 'u0'),
+                isLiked: userId ? c.likes?.some((l: any) => l.userId === userId) : false,
               });
               
               if (c.replies) {
@@ -69,10 +101,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
                   flatComments.push({
                     id: r.id,
                     author: r.user?.name || 'User',
+                    user: r.user,
                     text: r.text,
                     time: formatTimeAgo(r.createdAt),
                     likes: r.likes?.length || 0,
-                    isLiked: r.likes?.some((l: any) => l.userId === 'u0'),
+                    isLiked: userId ? r.likes?.some((l: any) => l.userId === userId) : false,
                     parentId: c.id
                   });
                 });
@@ -123,17 +156,21 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
 
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
+    if (!currentUser) {
+      alert('You must be logged in to comment');
+      return;
+    }
     
     const result = await addPostComment({
       postId: post.id,
-      userId: 'u0',
+      userId: currentUser.id,
       text: commentText,
     });
 
     if (result.success) {
       const newComment = {
         id: result.id,
-        author: 'Alex Johnson',
+        author: currentUser.name || 'User',
         text: commentText,
         time: 'Just now',
         likes: 0,
@@ -147,7 +184,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
   };
 
   const toggleCommentLike = async (id: string) => {
-    const result = await toggleCommentLikeAction(id, 'u0');
+    if (!currentUser) {
+      alert('You must be logged in to like comments');
+      return;
+    }
+    const result = await toggleCommentLikeAction(id, currentUser.id);
     if (result.success) {
       setComments(comments.map(c => {
         if (c.id === id) {
@@ -160,10 +201,14 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
 
   const handleReply = async (parentId: string) => {
     if (!replyText.trim()) return;
+    if (!currentUser) {
+      alert('You must be logged in to reply');
+      return;
+    }
     
     const result = await addPostComment({
       postId: post.id,
-      userId: 'u0',
+      userId: currentUser.id,
       text: replyText,
       parentId: parentId,
     });
@@ -171,7 +216,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
     if (result.success) {
       const newReply = {
         id: result.id,
-        author: 'Alex Johnson',
+        author: currentUser.name || 'User',
         text: replyText,
         time: 'Just now',
         likes: 0,
@@ -211,7 +256,11 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
   };
 
   const handleToggleLike = async () => {
-    const result = await togglePostLike(post.id, 'u0');
+    if (!currentUser) {
+      alert('You must be logged in to like posts');
+      return;
+    }
+    const result = await togglePostLike(post.id, currentUser.id);
     if (result.success) {
       setLiked(!liked);
       setLikeCount(prev => liked ? prev - 1 : prev + 1);
@@ -219,12 +268,16 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
   };
 
   const handleSave = async () => {
+    if (!currentUser) {
+      alert('You must be logged in to save posts');
+      return;
+    }
     // Optimistic UI
     const newSaved = !saved;
     setSaved(newSaved);
 
     try {
-      await togglePostSave(post.id, 'u0');
+      await togglePostSave(post.id, currentUser.id);
     } catch (err) {
       console.error('Failed to toggle save:', err);
       // Rollback on error
@@ -233,126 +286,153 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
     setShowMenu(false);
   };
 
-  const paragraphs = post.content
+  const paragraphs = (post.content || '')
     .split('\n')
-    .map(l => l.trim())
+    .map((l: string) => l.trim())
     .filter(Boolean);
 
   return (
     <div className="feed-container animate-fade-in" style={{ maxWidth: '720px' }} id="article-page">
 
-      {/* Category pill */}
-      <span style={{
-        display: 'inline-block', padding: '4px 14px', borderRadius: 'var(--radius-full)',
-        fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em',
-        background: `${catColor}18`, color: catColor, marginBottom: '16px',
-      }}>
-        {post.category}
-      </span>
+      {/* ── Fixed Article Header ── */}
+      <div className={`article-detail-header ${scrolledPastTitle ? 'article-detail-header--scrolled' : ''}`}>
+        <div className="article-detail-header__inner">
+          <button
+            className="article-detail-header__back"
+            onClick={() => router.back()}
+            aria-label="Go back"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5" />
+              <path d="M12 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <div className="article-detail-header__center">
+            <span
+              className={`article-detail-header__title ${scrolledPastTitle ? 'article-detail-header__title--visible' : ''}`}
+            >
+              {post.title}
+            </span>
+
+          </div>
+
+          <div className="article-detail-header__actions">
+            <button
+              className={`article-detail-header__action-btn ${liked ? 'article-detail-header__action-btn--active' : ''}`}
+              onClick={handleToggleLike}
+              aria-label="Like"
+              style={{ color: liked ? catColor : undefined }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+              </svg>
+            </button>
+            <button
+              className={`article-detail-header__action-btn ${saved ? 'article-detail-header__action-btn--active' : ''}`}
+              onClick={handleSave}
+              aria-label="Save"
+              style={{ color: saved ? catColor : undefined }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill={saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
+            <button
+              className="article-detail-header__action-btn"
+              onClick={handleShare}
+              aria-label="Share"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="18" cy="5" r="3" />
+                <circle cx="6" cy="12" r="3" />
+                <circle cx="18" cy="19" r="3" />
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Headline */}
-      <h1 style={{
+      <h1 ref={headlineRef} style={{
         fontSize: '32px', fontWeight: 900, lineHeight: 1.2,
         color: 'var(--text-primary)', marginBottom: '16px', letterSpacing: '-0.5px',
+        padding: '0 8px',
       }}>
         {post.title}
       </h1>
       {/* Author + meta */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px' }}>
+      <Link 
+        href={`/profile/${post.authorId}`}
+        style={{ 
+          display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '28px',
+          textDecoration: 'none', color: 'inherit'
+        }}
+      >
         <div style={{
-          width: '44px', height: '44px', borderRadius: '50%',
-          background: `linear-gradient(135deg, ${catColor}, ${catColor}88)`,
+          width: '40px', height: '40px', borderRadius: '50%',
+          background: 'var(--surface-2)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '20px', flexShrink: 0,
+          fontSize: '18px', flexShrink: 0,
+          overflow: 'hidden',
         }}>
-          {post.author.avatar}
+          {(() => {
+            const user = post.author as any;
+            const picUrl = user.profilePicture || user.image;
+            if (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:'))) {
+              return <img src={picUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+            }
+            const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`;
+            return <img src={avatarUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+          })()}
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 600, fontSize: '15px', color: 'var(--text-primary)' }}>
             {post.author.name}
           </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: '13px', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
             {post.author.college} · {post.timeAgo}
           </div>
         </div>
+      </Link>
 
-        {/* More Actions Menu */}
-        <div style={{ position: 'relative' }}>
-          <button 
-            style={{ 
-              background: 'none', border: 'none', padding: '8px',
-              color: 'var(--text-primary)', fontSize: '22px', 
-              cursor: 'pointer', display: 'flex', alignItems: 'center'
-            }}
-            onClick={() => setShowMenu(!showMenu)}
-          >
-            ⋮
-          </button>
-
-          {showMenu && (
-            <>
-              <div 
-                style={{ position: 'fixed', inset: 0, zIndex: 100 }} 
-                onClick={() => setShowMenu(false)}
-              />
-              <div style={{
-                position: 'absolute', top: '48px', right: '0',
-                width: '190px', background: 'rgba(23, 23, 23, 0.9)',
-                backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.08)',
-                borderRadius: '16px', boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-                padding: '8px', zIndex: 101,
-                animation: 'fade-in 0.2s ease-out'
-              }}>
-                <Link href={`/profile/${post.authorId}`} style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '12px', borderRadius: '12px', color: 'var(--text-primary)',
-                  fontSize: '14px', textDecoration: 'none', transition: 'all 0.2s'
-                }}>
-                  <span style={{ color: catColor, fontSize: '18px' }}>👤</span> Visit Profile
-                </Link>
-                <div 
-                  onClick={handleShare}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '12px', borderRadius: '12px', color: 'var(--text-primary)',
-                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s'
-                  }}
-                >
-                  <span style={{ color: catColor, fontSize: '18px' }}>📤</span> Share News
-                </div>
-                <div 
-                  onClick={handleSave}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '12px', borderRadius: '12px', 
-                    color: saved ? catColor : 'var(--text-primary)',
-                    fontSize: '14px', cursor: 'pointer', transition: 'all 0.2s',
-                    background: saved ? `${catColor}15` : 'transparent'
-                  }}
-                >
-                  <span style={{ color: catColor, fontSize: '18px' }}>{saved ? '⭐' : '🔖'}</span> 
-                  {saved ? 'Saved' : 'Save News'}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Hero image */}
+      {/* Hero image/video */}
       <div style={{ borderRadius: 'var(--radius-xl)', overflow: 'hidden', marginBottom: '32px' }}>
-        <img
-          src={post.imageUrl}
-          alt={post.title}
-          className="article-hero"
-          style={{ margin: 0, borderRadius: 0, width: '100%', height: 'auto', display: 'block' }}
-          onError={e => {
-            const t = e.currentTarget as HTMLImageElement;
-            t.style.display = 'none';
-            const fb = t.nextElementSibling as HTMLElement | null;
-            if (fb) fb.style.display = 'flex';
-          }}
-        />
+        {(() => {
+          const videoUrl = post.videoUrl || (post.imageUrl?.match(/\.(mp4|webm|mov|ogg)$|^data:video/i) ? post.imageUrl : null);
+          if (videoUrl) {
+            return (
+              <video
+                src={videoUrl}
+                poster={post.imageUrl}
+                className="article-hero"
+                style={{ margin: 0, borderRadius: 0, width: '100%', height: 'auto', display: 'block' }}
+                autoPlay
+                loop
+                playsInline
+                controlsList="nodownload noplaybackrate nofullscreen"
+                disablePictureInPicture
+              />
+
+            );
+          }
+          return (
+            <img
+              src={post.imageUrl}
+              alt={post.title}
+              className="article-hero"
+              style={{ margin: 0, borderRadius: 0, width: '100%', height: 'auto', display: 'block' }}
+              onError={e => {
+                const t = e.currentTarget as HTMLImageElement;
+                t.style.display = 'none';
+                const fb = t.nextElementSibling as HTMLElement | null;
+                if (fb) fb.style.display = 'flex';
+              }}
+            />
+          );
+        })()}
         <div style={{
           display: 'none', width: '100%', height: '420px',
           background: post.imageColor, alignItems: 'center',
@@ -362,8 +442,9 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
         </div>
       </div>
 
+
       {/* Article body */}
-      <div className="article-body" id="article-body">
+      <div className="article-body" id="article-body" style={{ padding: '0 8px' }}>
         {paragraphs.map((para, i) => {
           if (para.startsWith('## ')) {
             return <h2 key={i}>{para.replace('## ', '')}</h2>;
@@ -381,26 +462,22 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
           return <p key={i}>{para}</p>;
         })}
       </div>
-      
-      {/* Like Row */}
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '32px 0 16px' }}>
-        <button
-          onClick={handleToggleLike}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '8px 18px', borderRadius: '100px',
-            background: liked ? `${catColor}15` : 'rgba(255,255,255,0.03)',
-            border: `1px solid ${liked ? catColor : 'rgba(255,255,255,0.1)'}`,
-            color: liked ? catColor : 'var(--text-secondary)',
-            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-            transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2.5">
+
+      {/* Engagement Stats */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '16px',
+        padding: '16px 8px', margin: '24px 0 0',
+        borderTop: '1px solid var(--border)',
+        color: 'var(--text-muted)', fontSize: '13px', fontWeight: 600,
+      }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: liked ? catColor : 'var(--text-muted)' }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill={liked ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
-          <span style={{ letterSpacing: '0.01em' }}>{likeCount} likes</span>
-        </button>
+          {likeCount} likes
+        </span>
+        <span>·</span>
+        <span>{post.comments} comments</span>
       </div>
 
       {/* Comments Section */}
@@ -412,39 +489,52 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
         </div>
         
         {/* Comment Input */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px' }}>
-          <textarea 
-            placeholder="Add a comment..."
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            style={{
-              flex: 1,
-              minHeight: '44px', padding: '12px 16px',
-              background: 'var(--surface-1)', color: 'var(--text-primary)',
-              border: '1px solid var(--border)', borderRadius: '22px',
-              outline: 'none', resize: 'none',
-              fontSize: '15px', fontFamily: 'inherit',
-              lineHeight: '20px'
-            }}
-          />
-          <button 
-            className="btn" 
-            onClick={handlePostComment}
-            disabled={!commentText.trim()}
-            style={{ 
-              height: '44px', padding: '0 20px', fontSize: '14px', 
-              background: commentText.trim() ? catColor : 'rgba(255,255,255,0.08)', 
-              color: commentText.trim() ? 'white' : 'var(--text-muted)', 
-              border: 'none', borderRadius: '22px', 
-              fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', flexShrink: 0,
-              opacity: 1,
-              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              boxShadow: commentText.trim() ? `0 4px 12px ${catColor}40` : 'none'
-            }}
-          >
-            Post
-          </button>
-        </div>
+        {canComment ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px' }}>
+            <textarea 
+              placeholder="Add a comment..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              style={{
+                flex: 1,
+                minHeight: '44px', padding: '12px 16px',
+                background: 'var(--surface-1)', color: 'var(--text-primary)',
+                border: '1px solid var(--border)', borderRadius: '22px',
+                outline: 'none', resize: 'none',
+                fontSize: '15px', fontFamily: 'inherit',
+                lineHeight: '20px'
+              }}
+            />
+            <button 
+              className="btn" 
+              onClick={handlePostComment}
+              disabled={!commentText.trim()}
+              style={{ 
+                height: '44px', padding: '0 20px', fontSize: '14px', 
+                background: commentText.trim() ? catColor : 'rgba(255,255,255,0.08)', 
+                color: commentText.trim() ? 'white' : 'var(--text-muted)', 
+                border: 'none', borderRadius: '22px', 
+                fontWeight: 700, cursor: commentText.trim() ? 'pointer' : 'default', flexShrink: 0,
+                opacity: 1,
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: commentText.trim() ? `0 4px 12px ${catColor}40` : 'none'
+              }}
+            >
+              Post
+            </button>
+          </div>
+        ) : (
+          <div style={{ 
+            padding: '20px', textAlign: 'center', background: 'var(--surface-2)', 
+            borderRadius: '16px', border: '1px solid var(--border)', marginBottom: '32px' 
+          }}>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: 0 }}>
+               {post.author.commentPrivacy === 'No One' 
+                 ? 'Comments are disabled for this post.' 
+                 : 'Only people followed by the author can comment.'}
+            </p>
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
           {comments.filter(c => !c.parentId).map((c) => {
@@ -464,9 +554,18 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
                       background: `linear-gradient(135deg, ${catColor}40, ${catColor}10)`, 
                       border: `1px solid ${catColor}50`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '16px', zIndex: 2
+                      fontSize: '16px', zIndex: 2,
+                      overflow: 'hidden',
                     }}>
-                      🎓
+                      {(() => {
+                        const u = c.user as any;
+                        const picUrl = u?.profilePicture || u?.image;
+                        if (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:'))) {
+                          return <img src={picUrl} alt={c.author} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                        }
+                        const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(c.author)}&background=random&color=fff`;
+                        return <img src={avatarUrl} alt={c.author} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                      })()}
                     </div>
                     {/* Stretches exactly to the bottom of the parent content padding */}
                     {threadItems.length > 0 && (
@@ -541,9 +640,17 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
                                   width: '28px', height: '28px', borderRadius: '50%', 
                                   background: 'var(--surface-3)', border: '1px solid var(--border)',
                                   flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                  fontSize: '12px'
+                                  fontSize: '12px', overflow: 'hidden'
                                 }}>
-                                  👤
+                                  {(() => {
+                                    const u = item.data.user as any;
+                                    const picUrl = u?.profilePicture || u?.image;
+                                    if (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:'))) {
+                                      return <img src={picUrl} alt={item.data.author} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                                    }
+                                    const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(item.data.author)}&background=random&color=fff`;
+                                    return <img src={avatarUrl} alt={item.data.author} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                                  })()}
                                 </div>
                                 <div style={{ flex: 1 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>

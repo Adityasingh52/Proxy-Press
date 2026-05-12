@@ -2,9 +2,34 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { completeOnboarding, checkUsernameAvailability, uploadMedia, getCurrentUser } from '@/lib/actions';
 import { compressImage } from '@/lib/image-utils';
 import './onboarding.css';
+
+// ─── TYPES ───
+type Step = 1 | 2 | 3 | 4;
+
+interface CropState {
+  image: string;
+  zoom: number;
+  offset: { x: number; y: number };
+}
+
+type PhotoFilter = 'none' | 'vivid' | 'bw' | 'warm' | 'cool' | 'cinematic' | 'retro' | 'dramatic' | 'mono' | 'bloom';
+
+const FILTERS: { id: PhotoFilter; label: string; filter: string }[] = [
+  { id: 'none', label: 'Original', filter: 'none' },
+  { id: 'vivid', label: 'Vivid', filter: 'saturate(1.5) contrast(1.1)' },
+  { id: 'bw', label: 'B&W', filter: 'grayscale(1)' },
+  { id: 'warm', label: 'Warm', filter: 'sepia(0.3) saturate(1.3) brightness(1.05)' },
+  { id: 'cool', label: 'Cool', filter: 'hue-rotate(180deg) brightness(1.1) saturate(1.1)' },
+  { id: 'cinematic', label: 'Cinematic', filter: 'sepia(0.2) contrast(1.2) brightness(0.9) hue-rotate(-10deg)' },
+  { id: 'retro', label: 'Retro', filter: 'sepia(0.5) contrast(0.9) brightness(1.1) saturate(1.2)' },
+  { id: 'dramatic', label: 'Dramatic', filter: 'contrast(1.5) brightness(0.8) saturate(0.8)' },
+  { id: 'mono', label: 'Mono', filter: 'grayscale(1) contrast(1.3)' },
+  { id: 'bloom', label: 'Bloom', filter: 'brightness(1.1) saturate(1.2) contrast(0.9)' },
+];
 
 const COUNTRY_CODES = [
   { code: '+91', label: '🇮🇳 +91', country: 'India' },
@@ -24,7 +49,7 @@ const COUNTRY_CODES = [
   { code: '+34', label: '🇪🇸 +34', country: 'ES' },
 ];
 
-type Step = 1 | 2 | 3;
+
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -34,12 +59,13 @@ export default function OnboardingPage() {
   const [email, setEmail] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 1 — Basic Information
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [college, setCollege] = useState('');
+  const [branch, setBranch] = useState('');
+  const [department, setDepartment] = useState('');
 
   // Step 2 — Contact Information
   const [countryCode, setCountryCode] = useState('+91');
@@ -51,6 +77,17 @@ export default function OnboardingPage() {
   const [bio, setBio] = useState('');
   const [gender, setGender] = useState('');
   const [links, setLinks] = useState<string[]>(['']);
+
+  // Cropper State
+  const [isCropping, setIsCropping] = useState(false);
+  const [cropState, setCropState] = useState<CropState | null>(null);
+  const cropperContainerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [initialTouchDistance, setInitialTouchDistance] = useState<number | null>(null);
+  const [initialZoom, setInitialZoom] = useState(1);
+  const [activeFilter, setActiveFilter] = useState<PhotoFilter>('none');
+  const [activeLegalDoc, setActiveLegalDoc] = useState<'none' | 'terms' | 'privacy'>('none');
 
   // Field errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -97,15 +134,12 @@ export default function OnboardingPage() {
       if (!name.trim()) newErrors.name = 'Full name is required';
       if (username.length < 3) newErrors.username = 'Username must be at least 3 characters';
       if (usernameStatus === 'taken') newErrors.username = 'This username is already taken';
-      if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-      if (!college.trim()) newErrors.college = 'College name is required';
+      if (!phoneNumber.trim()) newErrors.phone = 'Phone number is required';
     }
 
     if (step === 2) {
-      if (!phoneNumber.trim()) newErrors.phone = 'Phone number is required';
-      if (phoneNumber && !/^\d{6,15}$/.test(phoneNumber.replace(/\s/g, ''))) {
-        newErrors.phone = 'Enter a valid phone number';
-      }
+      if (!college.trim()) newErrors.college = 'College name is required';
+      if (!dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
     }
 
     setErrors(newErrors);
@@ -114,7 +148,7 @@ export default function OnboardingPage() {
 
   const handleNext = () => {
     if (!validateStep(currentStep)) return;
-    setCurrentStep((prev) => Math.min(prev + 1, 3) as Step);
+    setCurrentStep((prev) => Math.min(prev + 1, 4) as Step);
   };
 
   const handleBack = () => {
@@ -125,10 +159,145 @@ export default function OnboardingPage() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setProfilePictureFile(file);
       const url = URL.createObjectURL(file);
-      setProfilePicture(url);
+      setCropState({
+        image: url,
+        zoom: 1,
+        offset: { x: 0, y: 0 }
+      });
+      setIsCropping(true);
     }
+  };
+
+  const handleConfirmCrop = async () => {
+    if (!cropState || !cropperContainerRef.current) return;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const img = new Image();
+    img.src = cropState.image;
+    
+    await new Promise((resolve) => { img.onload = resolve; });
+
+    // Target size for profile pic
+    const targetSize = 400;
+    canvas.width = targetSize;
+    canvas.height = targetSize;
+
+    // Get the container size
+    const container = cropperContainerRef.current;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+
+    // Calculate how the image is scaled in the UI (object-fit: contain simulation)
+    const nw = img.naturalWidth;
+    const nh = img.naturalHeight;
+    const aspect = nw / nh;
+    
+    let baseWidth, baseHeight;
+    if (aspect > 1) {
+      // Landscape: height matches container
+      baseHeight = ch;
+      baseWidth = ch * aspect;
+    } else {
+      // Portrait or square: width matches container
+      baseWidth = cw;
+      baseHeight = cw / aspect;
+    }
+
+    // Now reproduce exactly what we see in the UI
+    // Image is centered in flex container + offset + zoom
+    const zoom = cropState.zoom;
+    const drawWidth = baseWidth * zoom * (targetSize / cw);
+    const drawHeight = baseHeight * zoom * (targetSize / cw);
+    
+    const x = (targetSize - drawWidth) / 2 + (cropState.offset.x * (targetSize / cw));
+    const y = (targetSize - drawHeight) / 2 + (cropState.offset.y * (targetSize / cw));
+
+    // Fill background
+    ctx.fillStyle = '#0F172A';
+    ctx.fillRect(0, 0, targetSize, targetSize);
+    
+    // Apply filter
+    const filterObj = FILTERS.find(f => f.id === activeFilter);
+    if (filterObj) {
+      ctx.filter = filterObj.filter;
+    }
+    
+    ctx.drawImage(img, x, y, drawWidth, drawHeight);
+
+    canvas.toBlob(async (blob) => {
+      if (blob) {
+        const file = new File([blob], 'profile.jpg', { type: 'image/jpeg' });
+        setProfilePictureFile(file);
+        setProfilePicture(URL.createObjectURL(blob));
+        setIsCropping(false);
+        setCropState(null);
+      }
+    }, 'image/jpeg', 0.9);
+  };
+
+  const handleCropDrag = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!cropState) return;
+
+    if ('touches' in e && e.touches.length === 2) {
+      e.preventDefault();
+      // Pinch to zoom
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+      
+      if (initialTouchDistance === null) {
+        setInitialTouchDistance(distance);
+        setInitialZoom(cropState.zoom);
+      } else {
+        const scale = distance / initialTouchDistance;
+        const newZoom = Math.max(0.5, Math.min(5, initialZoom * scale));
+        setCropState(prev => prev ? { ...prev, zoom: newZoom } : null);
+      }
+      return;
+    }
+
+    if (!isDragging) return;
+    if ('touches' in e) e.preventDefault();
+    
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    
+    const dx = clientX - dragStart.x;
+    const dy = clientY - dragStart.y;
+    
+    setCropState({
+      ...cropState,
+      offset: {
+        x: cropState.offset.x + dx,
+        y: cropState.offset.y + dy
+      }
+    });
+    
+    setDragStart({ x: clientX, y: clientY });
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      setIsDragging(false); // Stop dragging when starting a pinch
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const distance = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+      setInitialTouchDistance(distance);
+      setInitialZoom(cropState?.zoom || 1);
+    } else if (e.touches.length === 1) {
+      setIsDragging(true);
+      setDragStart({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    setInitialTouchDistance(null);
   };
 
   const handleAddLink = () => {
@@ -166,6 +335,8 @@ export default function OnboardingPage() {
         username,
         dateOfBirth,
         college,
+        branch: branch || undefined,
+        department: department || undefined,
         phone: `${countryCode} ${phoneNumber}`,
         bio: bio || undefined,
         gender: gender || undefined,
@@ -190,41 +361,7 @@ export default function OnboardingPage() {
   };
 
   // Also allow finishing/skipping step 3 without filling optional fields
-  const handleSkipAndFinish = async () => {
-    // Clear optional fields and finish
-    setBio('');
-    setGender('');
-    setLinks(['']);
-    setProfilePicture(null);
-    setProfilePictureFile(null);
 
-    setIsSubmitting(true);
-    try {
-      const result = await completeOnboarding({
-        name,
-        username,
-        dateOfBirth,
-        college,
-        phone: `${countryCode} ${phoneNumber}`,
-      });
-
-      if (result.success) {
-        setShowSuccess(true);
-        setTimeout(() => {
-          router.push('/');
-          router.refresh();
-        }, 2000);
-      } else {
-        setErrors({ submit: result.error || 'Something went wrong' });
-      }
-    } catch (err) {
-      setErrors({ submit: 'An unexpected error occurred' });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const progressPercent = showSuccess ? 100 : ((currentStep - 1) / 3) * 100 + (currentStep === 3 ? 33 : 0);
 
   // ─── Success Screen ───
   if (showSuccess) {
@@ -242,9 +379,6 @@ export default function OnboardingPage() {
               <p className="success-message">
                 Your profile is all set, <span className="success-handle">@{username}</span>. Redirecting you to your feed...
               </p>
-              <div className="progress-bar-track" style={{ maxWidth: 200, margin: '0 auto' }}>
-                <div className="progress-bar-fill" style={{ width: '100%' }} />
-              </div>
             </div>
           </div>
         </div>
@@ -254,11 +388,17 @@ export default function OnboardingPage() {
 
   return (
     <div className="onboarding-page">
+      <div className="onboarding-bg-glow">
+        <div className="glow-blob blob-1" />
+        <div className="glow-blob blob-2" />
+        <div className="glow-blob blob-3" />
+      </div>
+
       <div className="onboarding-container">
         {/* Progress Indicator */}
         <div className="onboarding-progress">
           <div className="progress-steps">
-            {[1, 2, 3].map((step, i) => (
+            {[1, 2, 3, 4].map((step, i) => (
               <div key={step} className="progress-step">
                 <div className={`step-dot ${currentStep === step ? 'active' : ''} ${currentStep > step ? 'completed' : ''}`}>
                   {currentStep > step ? (
@@ -269,14 +409,11 @@ export default function OnboardingPage() {
                     step
                   )}
                 </div>
-                {i < 2 && (
+                {i < 3 && (
                   <div className={`step-connector ${currentStep > step + 1 ? 'filled' : ''} ${currentStep === step + 1 ? 'filling' : ''}`} />
                 )}
               </div>
             ))}
-          </div>
-          <div className="progress-bar-track">
-            <div className="progress-bar-fill" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
 
@@ -297,13 +434,17 @@ export default function OnboardingPage() {
             </div>
           )}
 
-          {/* ─── STEP 1: Basic Information ─── */}
+          {/* ─── STEP 1: Essentials ─── */}
           {currentStep === 1 && (
             <div className="step-content" key="step-1">
               <div className="step-header">
-                <span className="step-emoji">👤</span>
-                <h2 className="step-title">Basic Information</h2>
-                <p className="step-subtitle">Let's get to know you — tell us the essentials</p>
+                <div className="step-icon-wrapper">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                </div>
+                <h2 className="step-title">Essentials</h2>
+                <p className="step-subtitle">Let's start with the basics</p>
               </div>
 
               <div className="onboarding-form">
@@ -339,42 +480,73 @@ export default function OnboardingPage() {
                       className={`ob-input ${errors.username ? 'error' : usernameStatus === 'available' ? 'success' : ''}`}
                       value={username}
                       onChange={(e) => { handleUsernameChange(e.target.value); setErrors((p) => ({ ...p, username: '' })); }}
-                      placeholder="campusking"
+                      placeholder="username"
                     />
                     {usernameStatus !== 'idle' && (
                       <span className={`ob-input-status ${usernameStatus}`}>
                         {usernameStatus === 'checking' && '⏳'}
-                        {usernameStatus === 'available' && '✓ Available'}
-                        {usernameStatus === 'taken' && '✗ Taken'}
+                        {usernameStatus === 'available' && '✓'}
+                        {usernameStatus === 'taken' && '✗'}
                       </span>
                     )}
                   </div>
                   {errors.username && <span className="ob-field-error">{errors.username}</span>}
                 </div>
 
-                {/* Date of Birth */}
+                {/* Phone Number */}
                 <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-dob">Date of Birth</label>
-                  <div className="ob-input-wrapper">
-                    <span className="ob-input-icon">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                      </svg>
-                    </span>
+                  <label className="ob-label" htmlFor="ob-phone">Phone Number</label>
+                  <div className={`phone-input-group ${errors.phone ? 'error' : ''}`}>
+                    <select
+                      className="country-code-select"
+                      value={countryCode}
+                      onChange={(e) => setCountryCode(e.target.value)}
+                    >
+                      {COUNTRY_CODES.map((cc) => (
+                        <option key={cc.code} value={cc.code}>
+                          {cc.label}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="phone-divider" />
                     <input
-                      id="ob-dob"
-                      type="date"
-                      className={`ob-input ${errors.dateOfBirth ? 'error' : ''}`}
-                      value={dateOfBirth}
-                      onChange={(e) => { setDateOfBirth(e.target.value); setErrors((p) => ({ ...p, dateOfBirth: '' })); }}
+                      id="ob-phone"
+                      type="tel"
+                      className="phone-number-input"
+                      value={phoneNumber}
+                      onChange={(e) => { setPhoneNumber(e.target.value.replace(/[^0-9\s]/g, '')); setErrors((p) => ({ ...p, phone: '' })); }}
+                      placeholder="98765 43210"
                     />
                   </div>
-                  {errors.dateOfBirth && <span className="ob-field-error">{errors.dateOfBirth}</span>}
+                  {errors.phone && <span className="ob-field-error">{errors.phone}</span>}
                 </div>
 
-                {/* College Name */}
+                <div className="onboarding-actions">
+                  <button type="button" className="ob-btn-next" onClick={handleNext}>
+                    Continue →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── STEP 2: Academy ─── */}
+          {currentStep === 2 && (
+            <div className="step-content" key="step-2">
+              <div className="step-header">
+                <div className="step-icon-wrapper">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 10L12 5L2 10l10 5l10-5z" /><path d="M6 12v5c3.33 3 9.33 3 12 0v-5" />
+                  </svg>
+                </div>
+                <h2 className="step-title">Academy</h2>
+                <p className="step-subtitle">Your campus and identification</p>
+              </div>
+
+              <div className="onboarding-form">
+                {/* College */}
                 <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-college">College Name</label>
+                  <label className="ob-label" htmlFor="ob-college">College / University</label>
                   <div className="ob-input-wrapper">
                     <span className="ob-input-icon">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -387,234 +559,291 @@ export default function OnboardingPage() {
                       className={`ob-input ${errors.college ? 'error' : ''}`}
                       value={college}
                       onChange={(e) => { setCollege(e.target.value); setErrors((p) => ({ ...p, college: '' })); }}
-                      placeholder="MIT"
+                      placeholder="e.g. MIT"
                     />
                   </div>
                   {errors.college && <span className="ob-field-error">{errors.college}</span>}
                 </div>
 
-                <div className="onboarding-actions">
-                  <button
-                    type="button"
-                    className="ob-btn-next"
-                    onClick={handleNext}
-                  >
-                    Continue →
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ─── STEP 2: Contact Information ─── */}
-          {currentStep === 2 && (
-            <div className="step-content" key="step-2">
-              <div className="step-header">
-                <span className="step-emoji">📱</span>
-                <h2 className="step-title">Contact Information</h2>
-                <p className="step-subtitle">How can people reach you?</p>
-              </div>
-
-              <div className="onboarding-form">
-                {/* Email (read-only) */}
-                <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-email">Email Address</label>
-                  <div className="ob-input-wrapper">
-                    <span className="ob-input-icon">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" /><polyline points="22,6 12,13 2,6" />
-                      </svg>
-                    </span>
+                <div className="ob-row" style={{ display: 'flex', gap: '16px' }}>
+                  <div className="ob-form-group" style={{ flex: 1 }}>
+                    <label className="ob-label">Branch</label>
                     <input
-                      id="ob-email"
-                      type="email"
-                      className="ob-input"
-                      value={email}
-                      readOnly
+                      type="text"
+                      className="ob-input no-icon"
+                      value={branch}
+                      onChange={(e) => setBranch(e.target.value)}
+                      placeholder="e.g. CSE"
+                    />
+                  </div>
+                  <div className="ob-form-group" style={{ flex: 1 }}>
+                    <label className="ob-label">Dept.</label>
+                    <input
+                      type="text"
+                      className="ob-input no-icon"
+                      value={department}
+                      onChange={(e) => setDepartment(e.target.value)}
+                      placeholder="e.g. B.Tech"
                     />
                   </div>
                 </div>
 
-                {/* Phone Number with Country Code */}
-                <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-phone">Phone Number</label>
-                  <div className="phone-input-group">
-                    <select
-                      className="country-code-select"
-                      value={countryCode}
-                      onChange={(e) => setCountryCode(e.target.value)}
+                <div className="ob-row" style={{ display: 'flex', gap: '16px' }}>
+                  <div className="ob-form-group" style={{ flex: '1.2' }}>
+                    <label className="ob-label">Birth Date</label>
+                    <input
+                      type="date"
+                      className={`ob-input no-icon ${errors.dateOfBirth ? 'error' : ''}`}
+                      value={dateOfBirth}
+                      onChange={(e) => { setDateOfBirth(e.target.value); setErrors((p) => ({ ...p, dateOfBirth: '' })); }}
+                    />
+                    {errors.dateOfBirth && <span className="ob-field-error">{errors.dateOfBirth}</span>}
+                  </div>
+                  <div className="ob-form-group" style={{ flex: '1', minWidth: '100px' }}>
+                    <label className="ob-label">Gender</label>
+                    <select 
+                      className="ob-input no-icon"
+                      value={gender}
+                      onChange={(e) => setGender(e.target.value)}
                     >
-                      {COUNTRY_CODES.map((cc) => (
-                        <option key={cc.code} value={cc.code}>
-                          {cc.label}
-                        </option>
-                      ))}
+                      <option value="" disabled>Select</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="other">Other</option>
                     </select>
-                    <input
-                      id="ob-phone"
-                      type="tel"
-                      className={`phone-number-input ${errors.phone ? 'error' : ''}`}
-                      value={phoneNumber}
-                      onChange={(e) => { setPhoneNumber(e.target.value.replace(/[^0-9\s]/g, '')); setErrors((p) => ({ ...p, phone: '' })); }}
-                      placeholder="98765 43210"
-                    />
                   </div>
-                  {errors.phone && <span className="ob-field-error">{errors.phone}</span>}
                 </div>
 
                 <div className="onboarding-actions">
-                  <button type="button" className="ob-btn-back" onClick={handleBack}>
-                    ←
-                  </button>
-                  <button
-                    type="button"
-                    className="ob-btn-next"
-                    onClick={handleNext}
-                  >
-                    Continue →
-                  </button>
+                  <button type="button" className="ob-btn-back" onClick={handleBack}>←</button>
+                  <button type="button" className="ob-btn-next" onClick={handleNext}>Continue →</button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ─── STEP 3: Optional Information ─── */}
+          {/* ─── STEP 3: The Look (Photo) ─── */}
           {currentStep === 3 && (
             <div className="step-content" key="step-3">
               <div className="step-header">
-                <span className="step-emoji">✨</span>
-                <h2 className="step-title">Make It Yours</h2>
-                <p className="step-subtitle">Personalize your profile — you can always edit this later</p>
+                <div className="step-icon-wrapper">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+                </div>
+                <h2 className="step-title" style={{ fontSize: '28px', background: 'linear-gradient(135deg, var(--text-primary), var(--primary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Pick your Look</h2>
+                <p className="step-subtitle">Pick a photo that represents you best</p>
               </div>
 
               <div className="onboarding-form">
-                {/* Profile Picture */}
-                <div className="ob-form-group">
-                  <label className="ob-label">Profile Picture</label>
-                  <div className="ob-avatar-upload">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                    />
-                    <div
-                      className="ob-avatar-preview"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {profilePicture ? (
-                        <img src={profilePicture} alt="Profile" />
-                      ) : (
-                        '👤'
-                      )}
-                      <div className="ob-avatar-overlay">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" />
+                <div className="photo-selection-area">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileSelect}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <div 
+                    className={`profile-pic-preview-large ${profilePicture ? 'has-image' : ''}`}
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ margin: '0 auto' }}
+                  >
+                    {profilePicture ? (
+                      <img src={profilePicture} alt="Profile preview" />
+                    ) : (
+                      <div className="photo-placeholder">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
                         </svg>
+                        <span>Choose Photo</span>
                       </div>
+                    )}
+                    <div className="photo-edit-badge">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 5v14M5 12h14"/>
+                      </svg>
                     </div>
-                    <span className="ob-avatar-label">Tap to upload</span>
                   </div>
                 </div>
 
+                <div className="onboarding-actions" style={{ marginTop: '12px' }}>
+                  <button type="button" className="ob-btn-back" onClick={handleBack}>←</button>
+                  <button type="button" className="ob-btn-next" onClick={handleNext}>Continue →</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ─── STEP 4: Presence (Bio/Socials) ─── */}
+          {currentStep === 4 && (
+            <div className="step-content" key="step-4">
+              <div className="step-header">
+                <div className="step-icon-wrapper">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                  </svg>
+                </div>
+                <h2 className="step-title">Personality</h2>
+                <p className="step-subtitle">Share a bit about yourself</p>
+              </div>
+
+              <div className="onboarding-form">
                 {/* Bio */}
                 <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-bio">Bio</label>
+                  <label className="ob-label">Tell us about yourself</label>
                   <textarea
-                    id="ob-bio"
                     className="ob-textarea"
+                    placeholder="Wanderlust. Foodie. Code enthusiast."
+                    rows={2}
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
-                    placeholder="Tell the campus about yourself..."
-                    maxLength={160}
-                    rows={3}
                   />
-                  <span style={{ fontSize: 11, color: 'var(--text-subtle)', textAlign: 'right' }}>
-                    {bio.length}/160
-                  </span>
-                </div>
-
-                {/* Gender */}
-                <div className="ob-form-group">
-                  <label className="ob-label" htmlFor="ob-gender">Gender</label>
-                  <select
-                    id="ob-gender"
-                    className="ob-select"
-                    value={gender}
-                    onChange={(e) => setGender(e.target.value)}
-                  >
-                    <option value="">Prefer not to say</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="non-binary">Non-binary</option>
-                    <option value="other">Other</option>
-                  </select>
                 </div>
 
                 {/* Social Links */}
                 <div className="ob-form-group">
-                  <label className="ob-label">Social Links</label>
-                  <div className="ob-links-list">
-                    {links.map((link, i) => (
-                      <div key={i} className="ob-link-row">
-                        <input
-                          type="url"
-                          className="ob-link-input"
-                          value={link}
-                          onChange={(e) => handleLinkChange(i, e.target.value)}
-                          placeholder="https://..."
-                        />
-                        {links.length > 1 && (
-                          <button
-                            type="button"
-                            className="ob-link-remove"
-                            onClick={() => handleRemoveLink(i)}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                    {links.length < 5 && (
-                      <button type="button" className="ob-add-link-btn" onClick={handleAddLink}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-                        </svg>
-                        Add Link
-                      </button>
-                    )}
-                  </div>
+                  <label className="ob-label">Social Links (Optional)</label>
+                  {links.map((link, i) => (
+                    <div key={i} className="ob-link-row" style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        type="url"
+                        className="ob-link-input"
+                        placeholder="https://instagram.com/..."
+                        value={link}
+                        onChange={(e) => handleLinkChange(i, e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      {links.length > 1 && (
+                        <button type="button" className="ob-link-remove" onClick={() => handleRemoveLink(i)} style={{ padding: '0 8px' }}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                  {links.length < 5 && (
+                    <button type="button" className="ob-add-link-btn" onClick={handleAddLink}>
+                      + Add social link
+                    </button>
+                  )}
                 </div>
 
                 <div className="onboarding-actions">
-                  <button type="button" className="ob-btn-back" onClick={handleBack}>
-                    ←
-                  </button>
-                  <button
-                    type="button"
-                    className="ob-btn-skip"
-                    onClick={handleSkipAndFinish}
-                    disabled={isSubmitting}
-                  >
-                    Skip
-                  </button>
-                  <button
-                    type="button"
-                    className="ob-btn-finish"
-                    onClick={handleFinish}
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting ? 'Setting up...' : 'Finish ✓'}
+                  <button type="button" className="ob-btn-back" onClick={handleBack}>←</button>
+                  <button type="button" className="ob-btn-finish" onClick={handleFinish} disabled={isSubmitting}>
+                    {isSubmitting ? 'Finalizing...' : 'Finish ✓'}
                   </button>
                 </div>
               </div>
             </div>
           )}
         </div>
+
+        <p className="onboarding-footer-text external">
+          By using our platform, you agree to our{' '}
+          <button onClick={() => setActiveLegalDoc('terms')} className="ob-link-btn">Terms of Service</button> and{' '}
+          <button onClick={() => setActiveLegalDoc('privacy')} className="ob-link-btn">Privacy Policy</button>.
+        </p>
       </div>
+
+      {/* ─── LEGAL MODAL ─── */}
+      {activeLegalDoc !== 'none' && (
+        <div className="crop-modal-overlay legal-modal-overlay">
+          <div className="crop-modal legal-modal">
+            <div className="legal-modal-header">
+              <h3 className="crop-modal-title">
+                {activeLegalDoc === 'terms' ? 'Terms of Service' : 'Privacy Policy'}
+              </h3>
+            </div>
+            
+            <div className="legal-modal-content">
+              {activeLegalDoc === 'terms' ? (
+                <div className="legal-text-body">
+                  <h4>1. Acceptance of Terms</h4>
+                  <p>By using Proxy-Press, you agree to be bound by these Terms. If you do not agree, please do not use the app.</p>
+                  <h4>2. Eligibility</h4>
+                  <p>You must be a student or faculty member of the associated college to use this platform.</p>
+                  <h4>3. Community Guidelines</h4>
+                  <p>Harassment, hate speech, or inappropriate content is strictly prohibited.</p>
+                  <h4>4. Content Ownership</h4>
+                  <p>You retain rights to your content but grant us a license to display it.</p>
+                  <h4>5. Termination</h4>
+                  <p>We reserves the right to terminate accounts that violate our community standards.</p>
+                </div>
+              ) : (
+                <div className="legal-text-body">
+                  <h4>1. Information Collection</h4>
+                  <p>We collect your name, email, and campus information to provide our services.</p>
+                  <h4>2. Data Usage</h4>
+                  <p>Your data is used solely to maintain your account and improve your experience.</p>
+                  <h4>3. Data Protection</h4>
+                  <p>We use industry-standard encryption to protect your personal information.</p>
+                  <h4>4. No Third-Party Sales</h4>
+                  <p>We do not sell your personal information to third parties or advertisers.</p>
+                  <h4>5. Your Rights</h4>
+                  <p>You can update or delete your data anytime through your account settings.</p>
+                </div>
+              )}
+            </div>
+            
+            <div className="legal-modal-footer">
+              <button className="crop-btn-save" onClick={() => setActiveLegalDoc('none')}>
+                I Understand
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CROP MODAL ─── */}
+      {isCropping && cropState && (
+        <div className="crop-modal-overlay">
+          <div className="crop-modal">
+            <h3 className="crop-modal-title">Adjust Photo</h3>
+            <div 
+              className="crop-container"
+              ref={cropperContainerRef}
+              onMouseDown={(e) => { setIsDragging(true); setDragStart({ x: e.clientX, y: e.clientY }); }}
+              onMouseMove={handleCropDrag}
+              onMouseUp={() => setIsDragging(false)}
+              onMouseLeave={() => setIsDragging(false)}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleCropDrag}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="crop-mask">
+                <div className="crop-circle" />
+              </div>
+              <img 
+                src={cropState.image} 
+                alt="To crop" 
+                style={{
+                  transform: `translate(calc(-50% + ${cropState.offset.x}px), calc(-50% + ${cropState.offset.y}px)) scale(${cropState.zoom})`,
+                  filter: FILTERS.find(f => f.id === activeFilter)?.filter,
+                  cursor: isDragging ? 'grabbing' : 'grab'
+                }}
+                draggable={false}
+              />
+            </div>
+
+            <div className="filter-selection">
+              {FILTERS.map((f) => (
+                <button
+                  key={f.id}
+                  className={`filter-btn ${activeFilter === f.id ? 'active' : ''}`}
+                  onClick={() => setActiveFilter(f.id)}
+                >
+                  <div className="filter-preview" style={{ filter: f.filter, backgroundImage: `url(${cropState.image})` }} />
+                  <span className="filter-label">{f.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="crop-footer">
+              <button className="crop-btn-cancel" onClick={() => setIsCropping(false)}>Cancel</button>
+              <button className="crop-btn-save" onClick={handleConfirmCrop}>Apply</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

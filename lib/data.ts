@@ -45,7 +45,7 @@ export interface Post {
 
 export interface Notification {
   id: string;
-  type: "like" | "comment" | "mention" | "alert" | "follow";
+  type: "like" | "comment" | "mention" | "alert" | "follow" | "post";
   actor: string;
   actorAvatar: string;
   message: string;

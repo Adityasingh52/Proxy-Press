@@ -19,6 +19,7 @@ const NotificationsContext = createContext<NotificationsContextType | undefined>
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [activeToast, setActiveToast] = useState<Notification | null>(null);
+  const knownIdsRef = useRef<Set<string>>(new Set());
   const isInitialLoad = useRef(true);
   const unreadCount = notifs.filter(n => !n.isRead).length;
 
@@ -38,13 +39,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }));
 
         // Detect new notifications for toast
-        if (!isInitialLoad.current && mapped.length > 0) {
-          const newNotifs = mapped.filter(n => !n.isRead && !notifs.some(prev => prev.id === n.id));
+        if (!isInitialLoad.current) {
+          const newNotifs = mapped.filter(n => !n.isRead && !knownIdsRef.current.has(n.id));
           if (newNotifs.length > 0) {
             setActiveToast(newNotifs[0]); // Show the newest one
           }
         }
 
+        // Update known IDs
+        mapped.forEach(n => knownIdsRef.current.add(n.id));
+        
         setNotifs(mapped);
         isInitialLoad.current = false;
       } catch (err) {

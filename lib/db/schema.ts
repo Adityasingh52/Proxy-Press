@@ -1,17 +1,19 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, boolean, timestamp } from 'drizzle-orm/pg-core';
 
 import { relations } from 'drizzle-orm';
 
-export const users = sqliteTable('users', {
+export const users = pgTable('users', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email'),
+  emailVerified: timestamp('email_verified', { mode: 'date' }),
+  image: text('image'),
   password: text('password'), // Plain text for demo, would be hashed in prod
-  avatar: text('avatar').notNull(),
-  college: text('college').notNull(),
+  avatar: text('avatar'),
+  college: text('college'),
   branch: text('branch'),
   department: text('department'),
-  bio: text('bio').notNull(),
+  bio: text('bio'),
   contactInfo: text('contact_info'),
   followers: integer('followers').default(0),
   following: integer('following').default(0),
@@ -24,7 +26,17 @@ export const users = sqliteTable('users', {
   links: text('links'),                     // JSON-stringified array of URLs
   phone: text('phone'),                     // with country code
   profilePicture: text('profile_picture'),  // uploaded image path
-  onboardingComplete: integer('onboarding_complete', { mode: 'boolean' }).default(false),
+  onboardingComplete: boolean('onboarding_complete').default(false),
+  notifyLikes: boolean('notify_likes').default(true),
+  notifyComments: boolean('notify_comments').default(true),
+  notifyMentions: boolean('notify_mentions').default(true),
+  notifyNewPosts: boolean('notify_new_posts').default(false),
+  role: text('role').default('user'),           // 'user' or 'admin'
+  isPrivate: boolean('is_private').default(false),
+  commentPrivacy: text('comment_privacy').default('Everyone'), // 'Everyone', 'People You Follow', 'No One'
+  mentionPrivacy: text('mention_privacy').default('Everyone'), // 'Everyone', 'People You Follow', 'No One'
+  showActivityStatus: boolean('show_activity_status').default(true),
+  lastSeen: text('last_seen'), // ISO date string
 });
 
 export const userRelations = relations(users, ({ many }) => ({
@@ -35,9 +47,11 @@ export const userRelations = relations(users, ({ many }) => ({
   postComments: many(postComments),
   commentLikes: many(commentLikes),
   postSaves: many(postSaves),
+  followRequests: many(followRequests, { relationName: 'receivedFollowRequests' }),
+  sentFollowRequests: many(followRequests, { relationName: 'sentFollowRequests' }),
 }));
 
-export const categories = sqliteTable('categories', {
+export const categories = pgTable('categories', {
   name: text('name').primaryKey(),
   emoji: text('emoji').notNull(),
   color: text('color').notNull(),
@@ -47,7 +61,7 @@ export const categoryRelations = relations(categories, ({ many }) => ({
   posts: many(posts),
 }));
 
-export const posts = sqliteTable('posts', {
+export const posts = pgTable('posts', {
   id: text('id').primaryKey(),
   slug: text('slug').notNull().unique(),
   title: text('title').notNull(),
@@ -56,6 +70,7 @@ export const posts = sqliteTable('posts', {
   category: text('category').references(() => categories.name),
   authorId: text('author_id').references(() => users.id),
   imageUrl: text('image_url').notNull(),
+  videoUrl: text('video_url'),
   imageColor: text('image_color').notNull(),
   publishedAt: text('published_at').notNull(), // ISO string
   likes: integer('likes').default(0),
@@ -76,7 +91,7 @@ export const postRelations = relations(posts, ({ one, many }) => ({
   savedList: many(postSaves),
 }));
 
-export const notifications = sqliteTable('notifications', {
+export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
   userId: text('user_id').references(() => users.id),
   type: text('type').notNull(), // 'like', 'comment', 'mention', 'alert', 'follow'
@@ -84,7 +99,7 @@ export const notifications = sqliteTable('notifications', {
   message: text('message').notNull(),
   timeAgo: text('time_ago').notNull(),
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
-  isRead: integer('is_read', { mode: 'boolean' }).default(false),
+  isRead: boolean('is_read').default(false),
   postId: text('post_id').references(() => posts.id),
 });
 
@@ -105,26 +120,27 @@ export const notificationRelations = relations(notifications, ({ one }) => ({
   }),
 }));
 
-export const announcements = sqliteTable('announcements', {
+export const announcements = pgTable('announcements', {
   id: text('id').primaryKey(),
   text: text('text').notNull(),
   type: text('type').notNull(), // 'info', 'alert', 'warning'
   timeAgo: text('time_ago').notNull(),
 });
 
-export const trendingTopics = sqliteTable('trending_topics', {
+export const trendingTopics = pgTable('trending_topics', {
   tag: text('tag').primaryKey(),
   postsCount: integer('posts_count').default(0),
 });
 
-export const conversations = sqliteTable('conversations', {
+export const conversations = pgTable('conversations', {
   id: text('id').primaryKey(),
   lastMessage: text('last_message'),
   lastMessageTime: text('last_message_time'),
   unreadCount: integer('unread_count').default(0),
-  isTyping: integer('is_typing', { mode: 'boolean' }).default(false),
-  muted: integer('muted', { mode: 'boolean' }).default(false),
-  vanishMode: integer('vanish_mode', { mode: 'boolean' }).default(false),
+  isTyping: boolean('is_typing').default(false),
+  muted: boolean('muted').default(false),
+  vanishMode: boolean('vanish_mode').default(false),
+  vanishDuration: integer('vanish_duration').default(3600), // Default 1 hour in seconds
 });
 
 export const conversationsRelations = relations(conversations, ({ many }) => ({
@@ -132,8 +148,8 @@ export const conversationsRelations = relations(conversations, ({ many }) => ({
   messages: many(messages),
 }));
 
-export const conversationParticipants = sqliteTable('conversation_participants', {
-  conversationId: text('conversation_id').references(() => conversations.id),
+export const conversationParticipants = pgTable('conversation_participants', {
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   userId: text('user_id').references(() => users.id),
 });
 
@@ -148,16 +164,19 @@ export const conversationParticipantsRelations = relations(conversationParticipa
   }),
 }));
 
-export const messages = sqliteTable('messages', {
+export const messages = pgTable('messages', {
   id: text('id').primaryKey(),
-  conversationId: text('conversation_id').references(() => conversations.id),
+  conversationId: text('conversation_id').references(() => conversations.id, { onDelete: 'cascade' }),
   senderId: text('sender_id').references(() => users.id),
   text: text('text').notNull(),
   timestamp: text('timestamp').notNull(),
-  seen: integer('seen', { mode: 'boolean' }).default(false),
+  seen: boolean('seen').default(false),
   type: text('type').notNull(), // 'text', 'image', 'heart', 'voice', 'video', 'file'
   replyTo: text('reply_to').references(() => messages.id),
   attachment: text('attachment'),
+  expiresAt: timestamp('expires_at', { mode: 'date' }), // Timestamp when message should be deleted
+  isEdited: boolean('is_edited').default(false),
+  isDeleted: boolean('is_deleted').default(false),
 });
 
 export const messageRelations = relations(messages, ({ one }) => ({
@@ -176,9 +195,9 @@ export const messageRelations = relations(messages, ({ one }) => ({
   }),
 }));
 
-export const stories = sqliteTable('stories', {
+export const stories = pgTable('stories', {
   userId: text('user_id').primaryKey().references(() => users.id),
-  seen: integer('seen', { mode: 'boolean' }).default(false),
+  seen: boolean('seen').default(false),
 });
 
 export const storiesRelations = relations(stories, ({ one, many }) => ({
@@ -187,9 +206,10 @@ export const storiesRelations = relations(stories, ({ one, many }) => ({
     references: [users.id],
   }),
   slides: many(storySlides),
+  views: many(storyViews),
 }));
 
-export const storySlides = sqliteTable('story_slides', {
+export const storySlides = pgTable('story_slides', {
   id: text('id').primaryKey(),
   storyId: text('story_id').references(() => stories.userId),
   type: text('type').notNull(), // 'text', 'image', 'video'
@@ -202,6 +222,23 @@ export const storySlides = sqliteTable('story_slides', {
   createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
 });
 
+export const storyViews = pgTable('story_views', {
+  storyId: text('story_id').notNull().references(() => stories.userId),
+  viewerId: text('viewer_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const storyViewsRelations = relations(storyViews, ({ one }) => ({
+  story: one(stories, {
+    fields: [storyViews.storyId],
+    references: [stories.userId],
+  }),
+  viewer: one(users, {
+    fields: [storyViews.viewerId],
+    references: [users.id],
+  }),
+}));
+
 export const storySlidesRelations = relations(storySlides, ({ one }) => ({
   story: one(stories, {
     fields: [storySlides.storyId],
@@ -209,7 +246,7 @@ export const storySlidesRelations = relations(storySlides, ({ one }) => ({
   }),
 }));
 
-export const postLikes = sqliteTable('post_likes', {
+export const postLikes = pgTable('post_likes', {
   postId: text('post_id').notNull().references(() => posts.id),
   userId: text('user_id').notNull().references(() => users.id),
 });
@@ -225,7 +262,7 @@ export const postLikesRelations = relations(postLikes, ({ one }) => ({
   }),
 }));
 
-export const postComments = sqliteTable('post_comments', {
+export const postComments = pgTable('post_comments', {
   id: text('id').primaryKey(),
   postId: text('post_id').notNull().references(() => posts.id),
   userId: text('user_id').notNull().references(() => users.id),
@@ -254,7 +291,7 @@ export const postCommentsRelations = relations(postComments, ({ one, many }) => 
   likes: many(commentLikes),
 }));
 
-export const commentLikes = sqliteTable('comment_likes', {
+export const commentLikes = pgTable('comment_likes', {
   commentId: text('comment_id').notNull().references(() => postComments.id),
   userId: text('user_id').notNull().references(() => users.id),
 });
@@ -270,7 +307,7 @@ export const commentLikesRelations = relations(commentLikes, ({ one }) => ({
   }),
 }));
 
-export const postSaves = sqliteTable('post_saves', {
+export const postSaves = pgTable('post_saves', {
   postId: text('post_id').notNull().references(() => posts.id),
   userId: text('user_id').notNull().references(() => users.id),
 });
@@ -288,7 +325,7 @@ export const postSavesRelations = relations(postSaves, ({ one }) => ({
 
 // ─── Safety Features ───
 
-export const userBlocks = sqliteTable('user_blocks', {
+export const userBlocks = pgTable('user_blocks', {
   userId: text('user_id').notNull().references(() => users.id),
   blockedId: text('blocked_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull(),
@@ -305,7 +342,7 @@ export const userBlocksRelations = relations(userBlocks, ({ one }) => ({
   }),
 }));
 
-export const userMutes = sqliteTable('user_mutes', {
+export const userMutes = pgTable('user_mutes', {
   userId: text('user_id').notNull().references(() => users.id),
   mutedId: text('muted_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull(),
@@ -322,7 +359,7 @@ export const userMutesRelations = relations(userMutes, ({ one }) => ({
   }),
 }));
 
-export const userReports = sqliteTable('user_reports', {
+export const userReports = pgTable('user_reports', {
   id: text('id').primaryKey(),
   reporterId: text('reporter_id').notNull().references(() => users.id),
   targetId: text('target_id').notNull().references(() => users.id),
@@ -341,7 +378,26 @@ export const userReportsRelations = relations(userReports, ({ one }) => ({
   }),
 }));
 
-export const follows = sqliteTable('follows', {
+export const postReports = pgTable('post_reports', {
+  id: text('id').primaryKey(),
+  reporterId: text('reporter_id').notNull().references(() => users.id),
+  postId: text('post_id').notNull().references(() => posts.id),
+  reason: text('reason').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+export const postReportsRelations = relations(postReports, ({ one }) => ({
+  reporter: one(users, {
+    fields: [postReports.reporterId],
+    references: [users.id],
+  }),
+  post: one(posts, {
+    fields: [postReports.postId],
+    references: [posts.id],
+  }),
+}));
+
+export const follows = pgTable('follows', {
   followerId: text('follower_id').notNull().references(() => users.id),
   followingId: text('following_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull(),
@@ -354,6 +410,73 @@ export const followsRelations = relations(follows, ({ one }) => ({
   }),
   following: one(users, {
     fields: [follows.followingId],
+    references: [users.id],
+  }),
+}));
+
+export const followRequests = pgTable('follow_requests', {
+  id: text('id').primaryKey(),
+  followerId: text('follower_id').notNull().references(() => users.id),
+  followingId: text('following_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const followRequestsRelations = relations(followRequests, ({ one }) => ({
+  follower: one(users, {
+    fields: [followRequests.followerId],
+    references: [users.id],
+    relationName: 'sentFollowRequests',
+  }),
+  following: one(users, {
+    fields: [followRequests.followingId],
+    references: [users.id],
+    relationName: 'receivedFollowRequests',
+  }),
+}));
+
+// ─── Auth.js Tables ───
+
+export const accounts = pgTable('accounts', {
+  id: text('id').notNull().primaryKey(),
+  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  provider: text('provider').notNull(),
+  providerAccountId: text('providerAccountId').notNull(),
+  refresh_token: text('refresh_token'),
+  access_token: text('access_token'),
+  expires_at: integer('expires_at'),
+  token_type: text('token_type'),
+  scope: text('scope'),
+  id_token: text('id_token'),
+  session_state: text('session_state'),
+});
+
+export const sessions = pgTable('sessions', {
+  sessionToken: text('sessionToken').notNull().primaryKey(),
+  userId: text('userId').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  expires: timestamp('expires', { mode: 'date' }).notNull(),
+});
+
+export const verificationTokens = pgTable('verification_tokens', {
+  identifier: text('identifier').notNull(),
+  token: text('token').notNull(),
+  expires: timestamp('expires', { mode: 'date' }).notNull(),
+}, (vt) => ({
+  pk: [vt.identifier, vt.token],
+}));
+
+export const feedback = pgTable('feedback', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').references(() => users.id),
+  type: text('type').notNull(), // 'bug', 'suggestion', 'other'
+  message: text('message').notNull(),
+  reply: text('reply'),
+  createdAt: text('created_at').notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const feedbackRelations = relations(feedback, ({ one }) => ({
+  user: one(users, {
+    fields: [feedback.userId],
     references: [users.id],
   }),
 }));

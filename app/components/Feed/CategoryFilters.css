@@ -1,16 +1,27 @@
 .feed-filters-wrapper {
-  margin-bottom: 24px;
+  margin-bottom: 8px;
   background: var(--bg);
-  padding: 12px 0;
-  transition: all var(--transition-base);
+  padding: 0;
+  position: relative;
+}
+
+/* Subtle bottom border for the tab bar */
+.feed-filters-wrapper::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
 }
 
 .feed-filters-scroll {
   display: flex;
-  gap: 12px;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 4px 2px;
+  padding: 0 0 0;
 }
 
 .feed-filters-scroll::-webkit-scrollbar {
@@ -20,55 +31,61 @@
 .feed-filter-pill {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 20px;
-  border-radius: 100px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  gap: 5px;
+  padding: 10px 14px;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2.5px solid transparent;
   color: var(--text-muted);
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
-  transition: all var(--transition-base);
-  box-shadow: var(--shadow-sm);
+  transition: all 0.2s ease;
   outline: none;
+  position: relative;
 }
 
 .feed-filter-pill:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  color: var(--text-primary);
+  background: rgba(var(--primary-rgb), 0.04);
 }
 
 .feed-filter-pill:active {
-  transform: translateY(0);
+  transform: none;
 }
 
 .feed-filter-pill.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  font-weight: 700;
+  background: transparent;
+  box-shadow: none;
 }
 
 .filter-emoji {
-  font-size: 16px;
+  font-size: 14px;
   display: flex;
   align-items: center;
 }
 
 .filter-text {
-  letter-spacing: -0.2px;
+  letter-spacing: -0.01em;
 }
 
-/* Dark mode adjustments if needed beyond variables */
+/* Dark mode */
 [class*="dark"] .feed-filter-pill {
-  background: #1e293b;
-  border-color: rgba(255, 255, 255, 0.1);
+  background: transparent;
+  border-color: transparent;
+  border-bottom-color: transparent;
 }
 
 [class*="dark"] .feed-filter-pill.active {
-  background: var(--primary);
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+[class*="dark"] .feed-filter-pill:hover {
+  background: rgba(255, 255, 255, 0.04);
 }

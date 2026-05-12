@@ -1,20 +1,66 @@
 import { db } from './index';
 import * as schema from './schema';
-import { eq, desc, and, ne, isNull, inArray, or, like, sql } from 'drizzle-orm';
+import { eq, desc, and, ne, isNull, inArray, or, like, sql, notInArray } from 'drizzle-orm';
 
 export async function getUsers() {
   return await db.select().from(schema.users);
 }
 
-export async function getPosts() {
-  return await db.query.posts.findMany({
-    with: {
-      author: true,
-      likesList: true,
-      savedList: true,
-    },
-    orderBy: [desc(schema.posts.publishedAt)],
-  });
+export async function getPosts(userId?: string) {
+  let excludedUserIds: string[] = [];
+  let followingUserIds: string[] = [];
+  
+  if (userId) {
+    const [mutes, blocks, following] = await Promise.all([
+      db.select().from(schema.userMutes).where(eq(schema.userMutes.userId, userId)),
+      db.select().from(schema.userBlocks).where(or(
+        eq(schema.userBlocks.userId, userId),
+        eq(schema.userBlocks.blockedId, userId)
+      )),
+      db.select().from(schema.follows).where(eq(schema.follows.followerId, userId))
+    ]);
+
+    excludedUserIds = [
+      ...mutes.map(m => m.mutedId),
+      ...blocks.map(b => b.userId === userId ? b.blockedId : b.userId)
+    ];
+    
+    followingUserIds = following.map(f => f.followingId);
+  }
+
+  const results = await db.select({
+    post: schema.posts,
+    author: schema.users,
+  })
+  .from(schema.posts)
+  .innerJoin(schema.users, eq(schema.posts.authorId, schema.users.id))
+  .where(and(
+    excludedUserIds.length > 0 ? notInArray(schema.posts.authorId, excludedUserIds) : undefined,
+    or(
+      eq(schema.users.isPrivate, false),
+      userId ? inArray(schema.posts.authorId, followingUserIds) : undefined,
+      userId ? eq(schema.posts.authorId, userId) : undefined
+    )
+  ))
+  .orderBy(desc(schema.posts.publishedAt));
+
+  // Fetch likes and saves for each post to maintain compatibility with the previous return format
+  // In a real app, this should be optimized with better joins or subqueries
+  const postsWithRelations = await Promise.all(results.map(async ({ post, author }) => {
+    const [likes, saves] = await Promise.all([
+      db.select().from(schema.postLikes).where(eq(schema.postLikes.postId, post.id)),
+      db.select().from(schema.postSaves).where(eq(schema.postSaves.postId, post.id)),
+    ]);
+    
+    return {
+      ...post,
+      author,
+      likesList: likes,
+      savedList: saves,
+    };
+  }));
+
+  return postsWithRelations;
 }
 
 export async function getPostBySlug(slug: string) {
@@ -41,9 +87,27 @@ export async function getPostBySlug(slug: string) {
   });
 }
 
-export async function getPostsByCategory(categoryName: string) {
+export async function getPostsByCategory(categoryName: string, userId?: string) {
+  let excludedUserIds: string[] = [];
+  if (userId) {
+    const [mutes, blocks] = await Promise.all([
+      db.select().from(schema.userMutes).where(eq(schema.userMutes.userId, userId)),
+      db.select().from(schema.userBlocks).where(or(
+        eq(schema.userBlocks.userId, userId),
+        eq(schema.userBlocks.blockedId, userId)
+      ))
+    ]);
+    excludedUserIds = [
+      ...mutes.map(m => m.mutedId),
+      ...blocks.map(b => b.userId === userId ? b.blockedId : b.userId)
+    ];
+  }
+
   return await db.query.posts.findMany({
-    where: eq(schema.posts.category, categoryName),
+    where: and(
+      eq(schema.posts.category, categoryName),
+      excludedUserIds.length > 0 ? notInArray(schema.posts.authorId, excludedUserIds) : undefined
+    ),
     with: {
       author: true,
     },
@@ -65,8 +129,27 @@ export async function getRelatedPosts(currentPostId: string, category: string, l
 }
 
 export async function getNotifications(userId?: string) {
+  if (!userId) return [];
+
+  // Filter out notifications from muted or blocked users
+  const [mutes, blocks] = await Promise.all([
+    db.select().from(schema.userMutes).where(eq(schema.userMutes.userId, userId)),
+    db.select().from(schema.userBlocks).where(or(
+      eq(schema.userBlocks.userId, userId),
+      eq(schema.userBlocks.blockedId, userId)
+    ))
+  ]);
+
+  const excludedUserIds = [
+    ...mutes.map(m => m.mutedId),
+    ...blocks.map(b => b.userId === userId ? b.blockedId : b.userId)
+  ];
+
   return await db.query.notifications.findMany({
-    where: userId ? eq(schema.notifications.userId, userId) : undefined,
+    where: and(
+      eq(schema.notifications.userId, userId),
+      excludedUserIds.length > 0 ? notInArray(schema.notifications.actorId, excludedUserIds) : undefined
+    ),
     with: {
       actor: true,
       post: true,
@@ -88,7 +171,17 @@ export async function getAnnouncements() {
 }
 
 export async function getConversations(userId: string) {
-  // 1. Get IDs of conversations where this user is a participant
+  // 1. Get user block lists (both directions)
+  const blocks = await db.select()
+    .from(schema.userBlocks)
+    .where(or(
+      eq(schema.userBlocks.userId, userId),
+      eq(schema.userBlocks.blockedId, userId)
+    ));
+  
+  const blockedUserIds = blocks.map(b => b.userId === userId ? b.blockedId : b.userId);
+
+  // 2. Get IDs of conversations where this user is a participant
   const participantResults = await db.select({ id: schema.conversationParticipants.conversationId })
     .from(schema.conversationParticipants)
     .where(eq(schema.conversationParticipants.userId, userId));
@@ -99,9 +192,10 @@ export async function getConversations(userId: string) {
 
   if (conversationIds.length === 0) return [];
 
-  // 2. Fetch full conversation data for only those IDs
-  return await db.query.conversations.findMany({
+  // 3. Fetch full conversation data for only those IDs
+  const convs = await db.query.conversations.findMany({
     where: inArray(schema.conversations.id, conversationIds),
+    orderBy: [desc(schema.conversations.lastMessageTime)],
     with: {
       participants: {
         with: {
@@ -114,6 +208,23 @@ export async function getConversations(userId: string) {
       },
     },
   });
+
+  // 4. Calculate unread counts and filter out conversations with blocked users
+  const results = convs
+    .filter(conv => {
+      const otherParticipant = conv.participants.find(p => p.userId !== userId);
+      if (!otherParticipant) return true;
+      return !blockedUserIds.includes(otherParticipant.userId);
+    })
+    .map(conv => {
+      const unreadCount = conv.messages.filter(m => !m.seen && m.senderId !== userId).length;
+      return {
+        ...conv,
+        unreadCount
+      };
+    });
+
+  return results;
 }
 
 export async function getMessages(conversationId: string) {
@@ -122,17 +233,65 @@ export async function getMessages(conversationId: string) {
     orderBy: [desc(schema.messages.timestamp)],
   });
 }
-export async function getStories() {
+export async function getStories(userId?: string) {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   
-  return await db.query.stories.findMany({
+  let excludedUserIds: string[] = [];
+  if (userId) {
+    const [mutes, blocks] = await Promise.all([
+      db.select().from(schema.userMutes).where(eq(schema.userMutes.userId, userId)),
+      db.select().from(schema.userBlocks).where(or(
+        eq(schema.userBlocks.userId, userId),
+        eq(schema.userBlocks.blockedId, userId)
+      ))
+    ]);
+    excludedUserIds = [
+      ...mutes.map(m => m.mutedId),
+      ...blocks.map(b => b.userId === userId ? b.blockedId : b.userId)
+    ];
+  }
+
+  const storiesResults = await db.query.stories.findMany({
     with: {
       slides: {
         where: (slides, { gt }) => gt(slides.createdAt, twentyFourHoursAgo)
       },
       user: true,
+      views: userId ? {
+        where: eq(schema.storyViews.viewerId, userId)
+      } : undefined,
     },
   });
+
+  // Filter:
+  // 1. Only return stories that have active slides
+  // 2. Filter out stories from blocked users
+  // 3. Filter out stories from private accounts (if not following)
+  let followingIds: string[] = [];
+  if (userId) {
+    const following = await db.select().from(schema.follows).where(eq(schema.follows.followerId, userId));
+    followingIds = following.map(f => f.followingId);
+  }
+  
+  return storiesResults
+    .filter(s => {
+      const hasSlides = s.slides && s.slides.length > 0;
+      if (!hasSlides) return false;
+      if (userId && excludedUserIds.includes(s.userId)) return false;
+      
+      // Privacy check
+      if (s.user.isPrivate) {
+        if (userId && (followingIds.includes(s.userId) || s.userId === userId)) {
+          return true;
+        }
+        return false;
+      }
+      return true;
+    })
+    .map(s => ({
+      ...s,
+      seen: s.views && s.views.length > 0
+    }));
 }
 
 export async function getPostComments(postId: string) {
@@ -185,15 +344,32 @@ export async function getUserSavedPosts(userId: string) {
   });
   return saves.map(s => s.post);
 }
-export async function searchUsers(query: string) {
+export async function searchUsers(query: string, currentUserId?: string) {
   const q = `%${query}%`;
-  return await db.query.users.findMany({
-    where: or(
-      like(schema.users.name, q),
-      like(schema.users.username, q)
+  
+  let blockedUserIds: string[] = [];
+  if (currentUserId) {
+    const blocks = await db.select()
+      .from(schema.userBlocks)
+      .where(or(
+        eq(schema.userBlocks.userId, currentUserId),
+        eq(schema.userBlocks.blockedId, currentUserId)
+      ));
+    blockedUserIds = blocks.map(b => b.userId === currentUserId ? b.blockedId : b.userId);
+  }
+
+  const results = await db.query.users.findMany({
+    where: and(
+      or(
+        like(schema.users.name, q),
+        like(schema.users.username, q)
+      ),
+      blockedUserIds.length > 0 ? notInArray(schema.users.id, blockedUserIds) : undefined
     ),
     limit: 10,
   });
+
+  return results;
 }
 
 export async function searchPosts(query: string) {

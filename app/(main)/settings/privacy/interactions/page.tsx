@@ -1,29 +1,65 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import '../../settings.css';
+import { getCurrentUser, updateInteractionPrivacy } from '@/lib/actions';
 
 export default function InteractionsSettingsPage() {
   const [interactions, setInteractions] = useState({
     comments: 'Everyone',
     mentions: 'Everyone',
-    tags: 'Everyone',
   });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const main = document.getElementById('main-content');
     if (main) {
       main.classList.add('no-top-padding');
-      return () => main.classList.remove('no-top-padding');
     }
+
+    async function loadData() {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setInteractions({
+            comments: user.commentPrivacy || 'Everyone',
+            mentions: user.mentionPrivacy || 'Everyone',
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load interactions:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadData();
+
+    return () => {
+      if (main) main.classList.remove('no-top-padding');
+    };
   }, []);
 
   const options = ['Everyone', 'People You Follow', 'No One'];
 
-  const handleUpdate = (type: keyof typeof interactions, value: string) => {
+  const handleUpdate = async (type: 'comments' | 'mentions', value: string) => {
     setInteractions(prev => ({ ...prev, [type]: value }));
+    try {
+      await updateInteractionPrivacy({
+        [type === 'comments' ? 'commentPrivacy' : 'mentionPrivacy']: value
+      });
+    } catch (err) {
+      console.error('Failed to update interaction privacy:', err);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="settings-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
 
   return (
     <div className="settings-container">
