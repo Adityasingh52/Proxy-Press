@@ -34,6 +34,15 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [isMe, setIsMe] = useState(initialData?.currentUserId === initialData?.user?.id);
   const [userPosts, setUserPosts] = useState<any[]>(initialData?.posts || []);
 
+  const [savedPosts, setSavedPosts] = useState<any[]>([]);
+  const [followersCount, setFollowersCount] = useState<number>(initialData?.followCounts?.followers || 0);
+  const [followingCount, setFollowingCount] = useState<number>(initialData?.followCounts?.following || 0);
+  const [isRequested, setIsRequested] = useState(initialData?.isRequested || false);
+  const [isLoading, setIsLoading] = useState(!initialData);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
+  const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
+  const [isMuted, setIsMuted] = useState(initialData?.isMuted || false);
+
   // Cache loading logic
   useEffect(() => {
     if (typeof window !== 'undefined' && !cacheLoaded.current) {
@@ -95,14 +104,6 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     }
   }, [user, userPosts, id, isFollowing, followersCount, followingCount]);
 
-  const [savedPosts, setSavedPosts] = useState<any[]>([]);
-  const [followersCount, setFollowersCount] = useState<number>(initialData?.followCounts?.followers || 0);
-  const [followingCount, setFollowingCount] = useState<number>(initialData?.followCounts?.following || 0);
-  const [isRequested, setIsRequested] = useState(initialData?.isRequested || false);
-  const [isLoading, setIsLoading] = useState(!initialData);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
-  const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
-  const [isMuted, setIsMuted] = useState(initialData?.isMuted || false);
 
   // Options menu state
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
