@@ -26,19 +26,79 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
-  const [user, setUser] = useState<any>(initialData?.user ? {
-    ...initialData.user,
-    postsCount: initialData.posts?.length || 0,
-    statusDisplay: initialData.statusDisplay || null
-  } : null);
+  const [user, setUser] = useState<any>(() => {
+    if (initialData?.user) return {
+      ...initialData.user,
+      postsCount: initialData.posts?.length || 0,
+      statusDisplay: initialData.statusDisplay || null
+    };
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          return parsed.user;
+        } catch (e) { return null; }
+      }
+    }
+    return null;
+  });
+
   const [isMe, setIsMe] = useState(initialData?.currentUserId === initialData?.user?.id);
-  const [userPosts, setUserPosts] = useState<any[]>(initialData?.posts || []);
+  
+  const [userPosts, setUserPosts] = useState<any[]>(() => {
+    if (initialData?.posts) return initialData.posts;
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          return parsed.posts || [];
+        } catch (e) { return []; }
+      }
+    }
+    return [];
+  });
 
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
-  const [followersCount, setFollowersCount] = useState<number>(initialData?.followCounts?.followers || 0);
-  const [followingCount, setFollowingCount] = useState<number>(initialData?.followCounts?.following || 0);
+  
+  const [followersCount, setFollowersCount] = useState<number>(() => {
+    if (initialData?.followCounts) return initialData.followCounts.followers;
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          return parsed.followCounts?.followers || 0;
+        } catch (e) { return 0; }
+      }
+    }
+    return 0;
+  });
+
+  const [followingCount, setFollowingCount] = useState<number>(() => {
+    if (initialData?.followCounts) return initialData.followCounts.following;
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          return parsed.followCounts?.following || 0;
+        } catch (e) { return 0; }
+      }
+    }
+    return 0;
+  });
+
   const [isRequested, setIsRequested] = useState(initialData?.isRequested || false);
-  const [isLoading, setIsLoading] = useState(!initialData);
+  
+  const [isLoading, setIsLoading] = useState(() => {
+    if (initialData) return false;
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem(`profile_cache_${id}`);
+    }
+    return true;
+  });
   const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
   const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
   const [isMuted, setIsMuted] = useState(initialData?.isMuted || false);
@@ -389,7 +449,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   }
 
   return (
-    <div className="ig-profile animate-fade-in" id="profile-page" style={{ position: 'relative' }}>
+    <div className="ig-profile animate-fade-in-instant" id="profile-page" style={{ position: 'relative' }}>
       {/* ─── Toast ─── */}
       {toast && (
         <div style={{
