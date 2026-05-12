@@ -75,6 +75,7 @@ interface UserStory {
 interface Conversation {
   id: string;
   user: User;
+  lastMessage: string;
   lastMessageTime: string;
   rawLastMessageTime?: string;
   unreadCount: number;
@@ -612,7 +613,7 @@ function MessagesContent() {
         setConversations(prev => prev.map(c => 
           c.id === activeChat ? { 
             ...c, 
-            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.messageId as string, status: 'sent' } : m)
+            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.id as string, status: 'sent' } : m)
           } : c
         ));
       }
