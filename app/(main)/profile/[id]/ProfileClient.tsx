@@ -21,6 +21,10 @@ const REPORT_REASONS = [
 
 export default function ProfileClient({ id, initialData }: { id: string; initialData: any }) {
   const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
+
+  // Use a ref to track if we've already loaded from cache to avoid infinite loops
+  const cacheLoaded = useRef(false);
+
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
   const [user, setUser] = useState<any>(initialData?.user ? {
     ...initialData.user,
@@ -29,6 +33,68 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   } : null);
   const [isMe, setIsMe] = useState(initialData?.currentUserId === initialData?.user?.id);
   const [userPosts, setUserPosts] = useState<any[]>(initialData?.posts || []);
+
+  // Cache loading logic
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !cacheLoaded.current) {
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          // Only use cache if we don't have initialData or if the cache is very recent
+          if (!initialData) {
+            setUser(parsed.user);
+            setUserPosts(parsed.posts);
+            setIsFollowing(parsed.isFollowing);
+            setFollowersCount(parsed.followCounts?.followers || 0);
+            setFollowingCount(parsed.followCounts?.following || 0);
+            setIsLoading(false);
+          }
+          cacheLoaded.current = true;
+        } catch (e) {
+          console.error("Failed to load profile cache", e);
+        }
+      }
+    }
+
+    // Background refresh if data is from cache or we want to ensure freshness
+    async function refreshProfile() {
+      try {
+        const freshData = await getProfileData(id);
+        if (freshData) {
+          setUser({
+            ...freshData.user,
+            postsCount: freshData.posts?.length || 0,
+            statusDisplay: freshData.statusDisplay || null
+          });
+          setUserPosts(freshData.posts || []);
+          setIsFollowing(freshData.isFollowing || false);
+          setFollowersCount(freshData.followCounts?.followers || 0);
+          setFollowingCount(freshData.followCounts?.following || 0);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        console.error("Background refresh failed", err);
+      }
+    }
+
+    refreshProfile();
+  }, [id, initialData]);
+
+  // Cache saving logic
+  useEffect(() => {
+    if (typeof window !== 'undefined' && user && userPosts.length > 0) {
+      const cacheData = {
+        user,
+        posts: userPosts,
+        isFollowing,
+        followCounts: { followers: followersCount, following: followingCount },
+        timestamp: Date.now()
+      };
+      localStorage.setItem(`profile_cache_${id}`, JSON.stringify(cacheData));
+    }
+  }, [user, userPosts, id, isFollowing, followersCount, followingCount]);
+
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
   const [followersCount, setFollowersCount] = useState<number>(initialData?.followCounts?.followers || 0);
   const [followingCount, setFollowingCount] = useState<number>(initialData?.followCounts?.following || 0);
@@ -354,7 +420,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
                <img src={user.profilePicture || user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=200`} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             </div>
           </div>
-          
+
           {isMe ? (
             <Link href="/settings" className="ig-header-settings-btn" aria-label="Settings">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

@@ -113,6 +113,10 @@ export async function getConversations(userId: string) {
   return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
 }
 
+export async function getMessages(conversationId: string) {
+  return JSON.parse(JSON.stringify(await queries.getMessages(conversationId)));
+}
+
 import { v2 as cloudinary } from 'cloudinary';
 
 cloudinary.config({

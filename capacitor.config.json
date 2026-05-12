@@ -9,8 +9,7 @@
   "android": {
     "backgroundColor": "#ffffff",
     "allowMixedContent": true,
-    "captureInput": true,
-    "androidScheme": "https"
+    "captureInput": true
   },
   "ios": {
     "contentInset": "always"

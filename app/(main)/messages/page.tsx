@@ -7,6 +7,7 @@ import MobileBottomNav from '@/app/components/Sidebar/MobileBottomNav';
 import './messages.css';
 import { 
   getConversations, 
+  getMessages,
   sendMessage as dbSendMessage, 
   uploadMedia, 
   createStory, 
@@ -169,6 +170,25 @@ function MessagesContent() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('me');
   const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
+  const cacheLoaded = useRef(false);
+
+  // 1. Instant Load from Cache
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !cacheLoaded.current) {
+      const cached = localStorage.getItem('messages_cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed.conversations)) {
+            setConversations(parsed.conversations);
+          }
+        } catch (e) {
+          console.error('Failed to load messages cache', e);
+        }
+      }
+      cacheLoaded.current = true;
+    }
+  }, []);
 
   useEffect(() => {
     async function loadInitialData() {
@@ -232,6 +252,14 @@ function MessagesContent() {
           });
 
           setConversations(mappedConvs);
+          
+          // Save to cache
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('messages_cache', JSON.stringify({
+              conversations: mappedConvs,
+              timestamp: Date.now()
+            }));
+          }
         }
 
         if (targetUserId) {
@@ -377,7 +405,24 @@ function MessagesContent() {
 
             // Always update state if we have new data to ensure correct sorting and order
             const newConvs = prev.filter(c => String(c.id).startsWith('new_'));
-            return [...newConvs, ...newMappedConvs];
+            const merged = [...newConvs, ...newMappedConvs].map(newC => {
+              const existing = prev.find(p => p.id === newC.id);
+              return {
+                ...newC,
+                // Preserve existing messages if we have them and the new one is empty
+                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages
+              };
+            });
+
+            // Update cache during polling too
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('messages_cache', JSON.stringify({
+                conversations: merged,
+                timestamp: Date.now()
+              }));
+            }
+
+            return merged;
           });
         }
       } catch (err) {
@@ -387,6 +432,42 @@ function MessagesContent() {
 
     return () => clearInterval(pollInterval);
   }, [currentUserId]);
+
+  // Load messages when active chat changes
+  useEffect(() => {
+    if (!activeChat || activeChat.startsWith('new_')) return;
+
+    async function loadChatMessages() {
+      const existing = conversations.find(c => c.id === activeChat);
+      // Only fetch if we don't have messages yet
+      if (existing && existing.messages.length === 0) {
+        try {
+          const dbMsgs = await getMessages(activeChat);
+          const mappedMsgs = dbMsgs.map((m: any) => ({
+            id: m.id,
+            senderId: m.senderId === currentUserId ? 'me' : m.senderId,
+            text: m.text,
+            timestamp: formatMessageTime(m.timestamp),
+            seen: m.seen,
+            type: m.type || 'text',
+            attachment: m.attachment,
+            expiresAt: m.expiresAt ? new Date(m.expiresAt).getTime() : undefined,
+            isEdited: m.isEdited,
+            isDeleted: m.isDeleted,
+            replyTo: m.replyTo,
+          })).reverse();
+
+          setConversations(prev => prev.map(c => 
+            c.id === activeChat ? { ...c, messages: mappedMsgs } : c
+          ));
+        } catch (err) {
+          console.error('Failed to load messages:', err);
+        }
+      }
+    }
+
+    loadChatMessages();
+  }, [activeChat, currentUserId]);
   const [messageInput, setMessageInput] = useState('');
   const activeConversation = conversations.find(c => c.id === activeChat);
   const [searchQuery, setSearchQuery] = useState('');

@@ -44,21 +44,25 @@ export async function getPosts(userId?: string) {
   ))
   .orderBy(desc(schema.posts.publishedAt));
 
-  // Fetch likes and saves for each post to maintain compatibility with the previous return format
-  // In a real app, this should be optimized with better joins or subqueries
-  const postsWithRelations = await Promise.all(results.map(async ({ post, author }) => {
-    const [likes, saves] = await Promise.all([
-      db.select().from(schema.postLikes).where(eq(schema.postLikes.postId, post.id)),
-      db.select().from(schema.postSaves).where(eq(schema.postSaves.postId, post.id)),
-    ]);
-    
+  if (results.length === 0) return [];
+
+  // Batch fetch all likes and saves for all posts in one go (SOLVES N+1 PROBLEM)
+  const postIds = results.map(r => r.post.id);
+  
+  const [allLikes, allSaves] = await Promise.all([
+    db.select().from(schema.postLikes).where(inArray(schema.postLikes.postId, postIds)),
+    db.select().from(schema.postSaves).where(inArray(schema.postSaves.postId, postIds)),
+  ]);
+
+  // Map them back to the posts
+  const postsWithRelations = results.map(({ post, author }) => {
     return {
       ...post,
       author,
-      likesList: likes,
-      savedList: saves,
+      likesList: allLikes.filter(l => l.postId === post.id),
+      savedList: allSaves.filter(s => s.postId === post.id),
     };
-  }));
+  });
 
   return postsWithRelations;
 }
@@ -192,7 +196,7 @@ export async function getConversations(userId: string) {
 
   if (conversationIds.length === 0) return [];
 
-  // 3. Fetch full conversation data for only those IDs
+  // 3. Fetch full conversation data (without all messages)
   const convs = await db.query.conversations.findMany({
     where: inArray(schema.conversations.id, conversationIds),
     orderBy: [desc(schema.conversations.lastMessageTime)],
@@ -202,14 +206,25 @@ export async function getConversations(userId: string) {
           user: true,
         },
       },
-      messages: {
-        orderBy: [desc(schema.messages.timestamp)],
-        limit: 50,
-      },
     },
   });
 
-  // 4. Calculate unread counts and filter out conversations with blocked users
+  // 4. Efficiently fetch unread counts for all conversations in one query
+  const unreadCounts = await db.select({
+    conversationId: schema.messages.conversationId,
+    count: sql<number>`count(*)`
+  })
+  .from(schema.messages)
+  .where(and(
+    inArray(schema.messages.conversationId, conversationIds),
+    ne(schema.messages.senderId, userId),
+    eq(schema.messages.seen, false)
+  ))
+  .groupBy(schema.messages.conversationId);
+
+  const unreadMap = new Map(unreadCounts.map(uc => [uc.conversationId, Number(uc.count)]));
+
+  // 5. Filter out conversations with blocked users and map unread counts
   const results = convs
     .filter(conv => {
       const otherParticipant = conv.participants.find(p => p.userId !== userId);
@@ -217,10 +232,10 @@ export async function getConversations(userId: string) {
       return !blockedUserIds.includes(otherParticipant.userId as string);
     })
     .map(conv => {
-      const unreadCount = conv.messages.filter(m => !m.seen && m.senderId !== userId).length;
       return {
         ...conv,
-        unreadCount
+        unreadCount: unreadMap.get(conv.id) || 0,
+        messages: [] // We fetch messages separately when chat is opened
       };
     });
 
