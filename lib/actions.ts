@@ -10,35 +10,52 @@ import { eq, and, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import { withCache, redis } from './redis';
 
 export async function getInitialData(userId?: string) {
-  const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
-    queries.getPosts(userId),
-    queries.getUsers(),
-    queries.getCategories(),
-    queries.getTrendingTopics(),
-    queries.getAnnouncements(),
-    queries.getNotifications(userId),
-    queries.getStories(userId),
-  ]);
+  const fetcher = async () => {
+    const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
+      queries.getPosts(userId),
+      queries.getUsers(),
+      queries.getCategories(),
+      queries.getTrendingTopics(),
+      queries.getAnnouncements(),
+      queries.getNotifications(userId),
+      queries.getStories(userId),
+    ]);
+
+    return {
+      posts,
+      authors,
+      categories,
+      trendingTopics,
+      announcements,
+      notifications,
+      stories,
+    };
+  };
+
+  // Only cache the public feed (no userId) to save memory
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_initial_data', fetcher, 300); // 5 mins cache for public
 
   // Deep clone to ensure all data is perfectly serializable POJOs for RSC stream
-  return JSON.parse(JSON.stringify({
-    posts,
-    authors,
-    categories,
-    trendingTopics,
-    announcements,
-    notifications,
-    stories,
-  }));
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function getStories(userId?: string) {
-  const allStories = await queries.getStories(userId);
-  // Filter out any story groupings that have 0 slides (e.g. all expired)
-  const validStories = allStories.filter((s: any) => s.slides && s.slides.length > 0);
-  return JSON.parse(JSON.stringify(validStories));
+  const fetcher = async () => {
+    const allStories = await queries.getStories(userId);
+    // Filter out any story groupings that have 0 slides (e.g. all expired)
+    return allStories.filter((s: any) => s.slides && s.slides.length > 0);
+  };
+
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_stories', fetcher, 120); // 2 mins cache for stories
+
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function markStoryAsSeen(storyUserId: string) {
@@ -108,6 +125,10 @@ cloudinary.config({
  * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    throw new Error('Cloudinary environment variables are missing. Please check your Vercel settings.');
+  }
+
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
   
@@ -188,6 +209,9 @@ export async function createPost(data: {
   } catch (err) {
     console.error('Failed to create new post notifications:', err);
   }
+
+  // Invalidate Public Cache
+  await redis.del('public_initial_data').catch(() => null);
 
   return { success: true, id };
 }
@@ -454,6 +478,9 @@ export async function createStory(data: {
     mediaUrl: data.mediaUrl,
     timestamp: 'Just now',
   });
+
+  // Invalidate Stories Cache
+  await redis.del('public_stories').catch(() => null);
 
   return { success: true, id: slideId };
 }
@@ -897,6 +924,40 @@ export async function getUserProfile(idOrHandle: string) {
   }
 
   return JSON.parse(JSON.stringify(user));
+}
+
+export async function getProfileData(idOrHandle: string) {
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+
+  // 1. Fetch user profile
+  const user = await getUserProfile(idOrHandle);
+  if (!user) return null;
+
+  const targetUserId = user.id;
+
+  // 2. Fetch all related data in parallel
+  const [posts, followCounts, followStatus, blockStatus, requestStatus] = await Promise.all([
+    db.query.posts.findMany({
+      where: eq(schema.posts.authorId, targetUserId),
+      orderBy: (posts, { desc }) => [desc(posts.createdAt)],
+    }),
+    getFollowCounts(targetUserId),
+    currentUserId ? getFollowStatus(targetUserId) : Promise.resolve({ following: false }),
+    currentUserId ? getBlockStatus(targetUserId) : Promise.resolve({ blocked: false, muted: false }),
+    currentUserId ? getFollowRequestStatus(targetUserId) : Promise.resolve({ requested: false }),
+  ]);
+
+  return JSON.parse(JSON.stringify({
+    user,
+    posts,
+    followCounts,
+    isFollowing: followStatus.following,
+    isBlocked: blockStatus.blocked,
+    isMuted: blockStatus.muted,
+    isRequested: requestStatus.requested,
+    currentUserId,
+  }));
 }
 
 // ─── Safety Features ───
@@ -1621,6 +1682,9 @@ export async function updatePost(postId: string, data: {
 
   revalidatePath('/');
   revalidatePath(`/article/${post.slug}`);
+  
+  // Invalidate Public Cache
+  await redis.del('public_initial_data').catch(() => null);
   
   return { success: true };
 }
