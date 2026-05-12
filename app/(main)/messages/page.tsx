@@ -438,11 +438,13 @@ function MessagesContent() {
     if (!activeChat || activeChat.startsWith('new_')) return;
 
     async function loadChatMessages() {
-      const existing = conversations.find(c => c.id === activeChat);
+      if (!activeChat) return;
+      const chatId = activeChat;
+      const existing = conversations.find(c => c.id === chatId);
       // Only fetch if we don't have messages yet
       if (existing && existing.messages.length === 0) {
         try {
-          const dbMsgs = await getMessages(activeChat);
+          const dbMsgs = await getMessages(chatId);
           const mappedMsgs = dbMsgs.map((m: any) => ({
             id: m.id,
             senderId: m.senderId === currentUserId ? 'me' : m.senderId,
@@ -458,7 +460,7 @@ function MessagesContent() {
           })).reverse();
 
           setConversations(prev => prev.map(c => 
-            c.id === activeChat ? { ...c, messages: mappedMsgs } : c
+            c.id === chatId ? { ...c, messages: mappedMsgs } : c
           ));
         } catch (err) {
           console.error('Failed to load messages:', err);
