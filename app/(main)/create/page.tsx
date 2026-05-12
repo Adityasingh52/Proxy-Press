@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { uploadMedia, createPost } from '@/lib/actions';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { uploadMedia, createPost, updatePost, getPostById, getCurrentUser } from '@/lib/actions';
 import { categories } from '@/lib/data';
 import type { Category } from '@/lib/data';
 import './create.css';
@@ -15,19 +15,79 @@ const categoryEmojis: Record<string, string> = {
 
 export default function CreatePostPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const editId = searchParams.get('edit');
+  const isEditing = !!editId;
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<Category | ''>('');
   const [dragging, setDragging] = useState(false);
-  const [imageFile, setImageFile] = useState<string | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [isHoveringUpload, setIsHoveringUpload] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [existingVideoUrl, setExistingVideoUrl] = useState<string | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const compressVideo = async (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const video = document.createElement('video');
+      video.src = url;
+      video.muted = true;
+      video.playsInline = true;
+      video.style.display = 'none';
+      document.body.appendChild(video);
+      
+      video.onloadedmetadata = () => {
+        try {
+          const duration = video.duration || 1;
+          const targetSizeBits = 9.5 * 1024 * 1024 * 8; // 9.5MB safety limit
+          
+          // Calculate required bitrate to fit in target size
+          // Clamp between 500kbps (min) and 5Mbps (max)
+          let calculatedBitRate = Math.floor(targetSizeBits / duration);
+          calculatedBitRate = Math.max(500000, Math.min(5000000, calculatedBitRate));
+
+          const stream = (video as any).captureStream();
+          const recorder = new MediaRecorder(stream, { 
+            mimeType: 'video/webm',
+            videoBitsPerSecond: calculatedBitRate
+          });
+          
+          const chunks: Blob[] = [];
+          recorder.ondataavailable = (e) => chunks.push(e.data);
+          recorder.onstop = () => {
+            const blob = new Blob(chunks, { type: 'video/webm' });
+            document.body.removeChild(video);
+            URL.revokeObjectURL(url);
+            resolve(blob);
+          };
+          
+          recorder.start();
+          video.play();
+          
+          video.onended = () => recorder.stop();
+        } catch (err) {
+          reject(err);
+        }
+      };
+
+      video.onerror = (err) => reject(err);
+    });
+  };
 
   useEffect(() => {
     const main = document.getElementById('main-content');
@@ -37,21 +97,97 @@ export default function CreatePostPage() {
     }
   }, []);
 
-  const handleDrop = (e: React.DragEvent) => {
+  useEffect(() => {
+    if (showCamera && videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [showCamera, cameraStream]);
+
+  useEffect(() => {
+    if (isEditing && editId) {
+      const loadPostData = async () => {
+        try {
+          const postData = await getPostById(editId);
+          if (postData) {
+            setTitle(postData.title);
+            setDescription(postData.description || postData.content);
+            setCategory(postData.category as Category);
+            setMediaUrl(postData.imageUrl);
+            setExistingVideoUrl(postData.videoUrl);
+            if (postData.videoUrl) {
+              setMediaType('video');
+            } else {
+              setMediaType('image');
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load post for editing:', err);
+        }
+      };
+      loadPostData();
+    }
+  }, [isEditing, editId]);
+
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const url = URL.createObjectURL(file);
-      setImageFile(url);
+    if (file) {
+      const isVideo = file.type.startsWith('video/');
+      if (isVideo && file.size > 10 * 1024 * 1024) { // > 10MB
+        setIsCompressing(true);
+        try {
+          const compressedBlob = await compressVideo(file);
+          const url = URL.createObjectURL(compressedBlob);
+          setMediaUrl(url);
+          setMediaType('video');
+          // Important: Create a new file so the input reference is still technically valid
+          const compressedFile = new File([compressedBlob], "compressed-video.webm", { type: "video/webm" });
+          const dT = new DataTransfer();
+          dT.items.add(compressedFile);
+          if (fileInputRef.current) fileInputRef.current.files = dT.files;
+        } catch (err) {
+          console.error('Compression failed', err);
+          alert('Video is too large. Please select a smaller clip.');
+        } finally {
+          setIsCompressing(false);
+        }
+      } else {
+        const url = URL.createObjectURL(file);
+        setMediaUrl(url);
+        setMediaType(isVideo ? 'video' : 'image');
+      }
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setImageFile(url);
+      const isVideo = file.type.startsWith('video/');
+      if (isVideo && file.size > 10 * 1024 * 1024) {
+        setIsCompressing(true);
+        try {
+          const compressedBlob = await compressVideo(file);
+          const url = URL.createObjectURL(compressedBlob);
+          setMediaUrl(url);
+          setMediaType('video');
+          
+          // Replace the file in the input with the compressed version
+          const compressedFile = new File([compressedBlob], "compressed-video.webm", { type: "video/webm" });
+          const dT = new DataTransfer();
+          dT.items.add(compressedFile);
+          if (fileInputRef.current) fileInputRef.current.files = dT.files;
+        } catch (err) {
+          console.error('Compression failed', err);
+          alert('Video is too large. Please select a smaller clip.');
+        } finally {
+          setIsCompressing(false);
+        }
+      } else {
+        const url = URL.createObjectURL(file);
+        setMediaUrl(url);
+        setMediaType(isVideo ? 'video' : 'image');
+      }
     }
   };
 
@@ -64,19 +200,17 @@ export default function CreatePostPage() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { facingMode: mode, width: { ideal: 1080 }, height: { ideal: 1920 } },
-        audio: false 
+        audio: true 
       });
       setCameraStream(stream);
       setFacingMode(mode);
       setShowCamera(true);
-      // Wait for next tick to ensure ref is bound
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      }, 0);
-    } catch (err) {
-      alert('Camera access denied or not available');
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError') {
+        alert('Camera or Microphone access was denied. Please enable permissions.');
+      } else {
+        alert('Could not access camera. Make sure it is not in use by another app.');
+      }
       console.error('Camera error:', err);
     }
   };
@@ -104,9 +238,105 @@ export default function CreatePostPage() {
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-      setImageFile(dataUrl);
+      setMediaUrl(dataUrl);
+      setMediaType('image');
       stopCamera();
     }
+  };
+
+  const startRecording = () => {
+    if (!cameraStream) return;
+    
+    chunksRef.current = [];
+    const options = { 
+      mimeType: 'video/webm;codecs=vp9,opus',
+      videoBitsPerSecond: 1000000 // 1.0Mbps
+    };
+    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+      options.mimeType = 'video/webm';
+    }
+    
+    try {
+      const recorder = new MediaRecorder(cameraStream, options);
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        setMediaUrl(url);
+        setMediaType('video');
+        stopCamera();
+        setIsRecording(false);
+        setRecordingTime(0);
+      };
+      
+      recorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
+        setIsRecording(false);
+      };
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      
+      // Ensure preview keeps playing
+      if (videoRef.current) {
+        videoRef.current.play().catch(c => console.warn('Preview play failed:', c));
+      }
+
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Recorder error:', err);
+      alert('Video recording failed to start.');
+    }
+  };
+
+  const stopRecordingCapture = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const generateThumbnail = async (videoUrl: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const video = document.createElement('video');
+      video.src = videoUrl;
+      video.muted = true;
+      video.playsInline = true;
+      video.currentTime = 0.5; // Capture at 0.5 seconds for better result
+      
+      video.onseeked = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(video, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } else {
+          resolve('');
+        }
+        video.remove();
+      };
+      
+      video.onerror = () => {
+        resolve('');
+        video.remove();
+      };
+    });
   };
 
   const handlePublish = async () => {
@@ -114,39 +344,79 @@ export default function CreatePostPage() {
     setPublishing(true);
     
     try {
-      let imageUrl = '';
-      
-      // 1. Upload image if exists
-      if (imageFile && fileInputRef.current?.files?.[0]) {
-        const formData = new FormData();
-        formData.append('file', fileInputRef.current.files[0]);
-        formData.append('category', 'images');
-        
-        const uploadRes = await uploadMedia(formData);
-        imageUrl = uploadRes.url;
-      } else if (imageFile?.startsWith('data:')) {
-        // Handle camera captured data URL
-        const res = await fetch(imageFile);
-        const blob = await res.blob();
-        const file = new File([blob], "camera-capture.jpg", { type: "image/jpeg" });
-        
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('category', 'images');
-        
-        const uploadRes = await uploadMedia(formData);
-        imageUrl = uploadRes.url;
+      const user = await getCurrentUser();
+      if (!user) {
+        alert('You must be logged in to post');
+        router.push('/login');
+        return;
       }
 
-      // 2. Create post in DB
-      await createPost({
-        title,
-        description,
-        content: description, // Simplified for now
-        category,
-        imageUrl: imageUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
-        authorId: 'u0', // Assuming current user is u0
-      });
+      let finalMediaUrl = mediaUrl || '';
+      let finalVideoUrl = existingVideoUrl || '';
+      const selectedFile = fileInputRef.current?.files?.[0];
+      
+      // 1. Process media
+      if (mediaUrl && (selectedFile || mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:'))) {
+        let fileToUpload: File | null = null;
+        
+        if (selectedFile) {
+          fileToUpload = selectedFile;
+        } else if (mediaUrl.startsWith('blob:') || mediaUrl.startsWith('data:')) {
+          const res = await fetch(mediaUrl);
+          const blob = await res.blob();
+          const isVideo = blob.type.startsWith('video/');
+          fileToUpload = new File([blob], isVideo ? "recorded-video.webm" : "capture.jpg", { type: blob.type });
+        }
+
+        if (fileToUpload) {
+          const isVideo = fileToUpload.type.startsWith('video/');
+          const formData = new FormData();
+          formData.append('file', fileToUpload);
+          formData.append('category', isVideo ? 'videos' : 'images');
+          
+          const uploadRes = await uploadMedia(formData);
+          
+          if (isVideo) {
+            finalVideoUrl = uploadRes.url;
+            // Generate and upload thumbnail for video
+            const thumbDataUrl = await generateThumbnail(mediaUrl);
+            if (thumbDataUrl) {
+              const tRes = await fetch(thumbDataUrl);
+              const tBlob = await tRes.blob();
+              const thumbFile = new File([tBlob], "thumbnail.jpg", { type: "image/jpeg" });
+              const thumbData = new FormData();
+              thumbData.append('file', thumbFile);
+              thumbData.append('category', 'images');
+              const thumbRes = await uploadMedia(thumbData);
+              finalMediaUrl = thumbRes.url;
+            }
+          } else {
+            finalMediaUrl = uploadRes.url;
+          }
+        }
+      }
+
+      // 2. Create or Update post in DB
+      if (isEditing && editId) {
+        await updatePost(editId, {
+          title,
+          description,
+          content: description,
+          category,
+          imageUrl: finalMediaUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+          videoUrl: finalVideoUrl || undefined,
+        });
+      } else {
+        await createPost({
+          title,
+          description,
+          content: description, 
+          category,
+          imageUrl: finalMediaUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+          videoUrl: finalVideoUrl || undefined,
+          authorId: user.id,
+        });
+      }
 
       setPublished(true);
     } catch (err) {
@@ -170,13 +440,13 @@ export default function CreatePostPage() {
         <div style={{ textAlign: 'center', animation: 'fade-in-up 0.5s ease' }}>
           <div style={{ fontSize: '64px', marginBottom: '20px' }}>🎉</div>
           <h2 style={{ fontSize: '24px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
-            Post Published!
+            Post {isEditing ? 'Updated' : 'Published'}!
           </h2>
           <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
             Your post is now live on the campus feed.
           </p>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-            <button className="btn btn-primary" onClick={() => { setPublished(false); setTitle(''); setDescription(''); setCategory(''); setImageFile(null); }}>
+            <button className="btn btn-primary" onClick={() => { setPublished(false); setTitle(''); setDescription(''); setCategory(''); setMediaUrl(null); setMediaType(null); }}>
               ✍️ Write Another
             </button>
             <a href="/" className="btn btn-ghost">🏠 Back to Feed</a>
@@ -198,10 +468,10 @@ export default function CreatePostPage() {
           marginBottom: '2px',
           justifyContent: 'center'
         }}>
-          Create Post
+          {isEditing ? 'Edit Post' : 'Create Post'}
         </h1>
         <p className="create-post-subtitle" style={{ fontSize: '14px', opacity: 0.7, fontWeight: 500 }}>
-          Share your latest campus updates
+          {isEditing ? 'Update your campus news' : 'Share your latest campus updates'}
         </p>
         <div style={{ 
           height: '1px', width: '100%', 
@@ -217,27 +487,26 @@ export default function CreatePostPage() {
             📝 <span>Post Details</span>
           </h2>
 
-            {/* Image upload */}
             <div style={{ marginBottom: '28px' }}>
               <label style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Cover Image
+                Cover Media (Image/Video)
               </label>
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,video/*"
                 style={{ display: 'none' }}
                 onChange={handleFileChange}
-                id="image-file-input"
+                id="media-file-input"
               />
               <div
                 className={`upload-zone ${dragging ? 'dragging' : ''}`}
-                id="image-drop-zone"
+                id="media-drop-zone"
                 onMouseEnter={() => setIsHoveringUpload(true)}
                 onMouseLeave={() => setIsHoveringUpload(false)}
                 style={{ 
                   position: 'relative',
-                  padding: imageFile ? '0' : '40px 20px', 
+                  padding: mediaUrl ? '0' : '40px 20px', 
                   overflow: 'hidden', 
                   minHeight: '220px',
                   borderRadius: '20px',
@@ -247,19 +516,41 @@ export default function CreatePostPage() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  cursor: imageFile ? 'default' : 'pointer'
+                  cursor: mediaUrl ? 'default' : 'pointer'
                 }}
-                onClick={() => !imageFile && fileInputRef.current?.click()}
+                onClick={() => !mediaUrl && fileInputRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setDragging(true); }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
               >
-                {imageFile ? (
+                {mediaUrl ? (
                   <div style={{ position: 'relative', width: '100%', height: '100%', animation: 'fade-in 0.4s ease' }}>
-                    <img src={imageFile} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
+                    {isCompressing && (
+                      <div style={{
+                        position: 'absolute', inset: 0, zIndex: 10,
+                        background: 'rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column',
+                        alignItems: 'center', justifyContent: 'center', color: '#fff'
+                      }}>
+                        <div className="spinner" style={{ marginBottom: '12px' }} />
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>Compressing Video...</span>
+                        <span style={{ fontSize: '11px', opacity: 0.8, marginTop: '4px' }}>Ensuring it fits 10MB limit</span>
+                      </div>
+                    )}
+                    {mediaType === 'video' ? (
+                      <video 
+                        key={mediaUrl}
+                        src={mediaUrl} 
+                        style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} 
+                        autoPlay 
+                        loop 
+                        playsInline
+                      />
+                    ) : (
+                      <img src={mediaUrl} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
+                    )}
                     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.4), transparent)', pointerEvents: 'none' }} />
                     <button
-                      onClick={e => { e.stopPropagation(); setImageFile(null); }}
+                      onClick={e => { e.stopPropagation(); setMediaUrl(null); setMediaType(null); }}
                       style={{
                         position: 'absolute', top: '16px', right: '16px',
                         background: 'rgba(255,255,255,0.9)', color: '#000',
@@ -285,17 +576,15 @@ export default function CreatePostPage() {
                     }}>
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7" />
-                        <line x1="16" y1="5" x2="22" y2="5" />
-                        <line x1="19" y1="2" x2="19" y2="8" />
-                        <circle cx="9" cy="9" r="2" />
+                        <rect x="14" y="2" width="8" height="8" rx="1" />
                         <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
                       </svg>
                     </div>
                     <h3 style={{ fontWeight: 700, fontSize: '17px', color: 'var(--text-primary)', marginBottom: '4px' }}>
-                      {dragging ? 'Release to Drop' : 'Upload Cover Image'}
+                      {dragging ? 'Release to Drop' : 'Upload Cover Media'}
                     </h3>
                     <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '20px' }}>
-                      Drag and drop or use the actions below
+                      Drag and drop image or video
                     </p>
                     
                     <div style={{ display: 'flex', gap: '12px' }}>
@@ -409,9 +698,9 @@ export default function CreatePostPage() {
             disabled={!isValid || publishing}
           >
             {publishing ? (
-              <><div className="spinner" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)', width: '20px', height: '20px' }} /> Publishing...</>
+              <><div className="spinner" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,0.3)', width: '20px', height: '20px' }} /> {isEditing ? 'Updating...' : 'Publishing...'}</>
             ) : (
-              <>🚀 Publish Post</>
+              <>{isEditing ? '💾 Update Post' : '🚀 Publish Post'}</>
             )}
           </button>
           {!isValid && (
@@ -466,8 +755,19 @@ export default function CreatePostPage() {
                     </span>
                   )}
                   
-                  {imageFile ? (
-                    <img src={imageFile} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
+                  {mediaUrl ? (
+                    mediaType === 'video' ? (
+                        <video 
+                          key={mediaUrl}
+                          src={mediaUrl} 
+                          style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} 
+                          autoPlay 
+                          loop 
+                          playsInline
+                        />
+                    ) : (
+                        <img src={mediaUrl} alt="Preview" style={{ width: '100%', aspectRatio: '16/9', objectFit: 'cover', display: 'block' }} />
+                    )
                   ) : (
                     <div style={{
                       width: '100%', aspectRatio: '16/9',
@@ -476,7 +776,7 @@ export default function CreatePostPage() {
                       flexDirection: 'column', gap: '10px',
                     }}>
                       <div style={{ fontSize: '40px', opacity: 0.3 }}>🖼️</div>
-                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Cover image preview</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 500 }}>Media preview</span>
                     </div>
                   )}
 
@@ -532,6 +832,7 @@ export default function CreatePostPage() {
               ref={videoRef} 
               autoPlay 
               playsInline 
+              muted
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
             
@@ -553,67 +854,119 @@ export default function CreatePostPage() {
               }}>
                 LIVE · {facingMode === 'user' ? 'Front' : 'Back'}
               </div>
+              <button 
+                onClick={toggleCamera}
+                disabled={isRecording}
+                style={{ 
+                  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: '50%',
+                  width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', cursor: 'pointer', transition: 'all 0.2s',
+                  opacity: isRecording ? 0.3 : 1
+                }}
+                title="Flip Camera"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                </svg>
+              </button>
             </div>
 
+            {isRecording && (
+              <div style={{
+                position: 'absolute', top: '80px', left: '50%', transform: 'translateX(-50%)',
+                background: 'rgba(239, 68, 68, 0.85)', padding: '6px 14px', borderRadius: '8px',
+                color: '#fff', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
+                boxShadow: '0 4px 15px rgba(239, 68, 68, 0.4)', zIndex: 10
+              }}>
+                <div style={{
+                  width: '10px', height: '10px', borderRadius: '50%', background: '#fff',
+                  animation: 'pulse 1s infinite'
+                }} />
+                {formatTime(recordingTime)}
+              </div>
+            )}
+            
             <div style={{ 
               position: 'absolute', bottom: '160px',
               width: '100%', textAlign: 'center', color: '#fff',
               fontSize: '13px', opacity: 0.8
             }}>
-              Align post subject within the frame
+              {isRecording ? 'Recording video...' : cameraMode === 'video' ? 'Tap red button to record' : 'Align post subject within the frame'}
             </div>
           </div>
 
           <div 
             style={{ 
-              height: '180px', background: '#000', display: 'flex', 
-              alignItems: 'center', justifyContent: 'space-around', padding: '0 40px',
-              borderTop: '1px solid rgba(255,255,255,0.1)'
+              height: '240px', background: '#000', display: 'flex', 
+              flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              borderTop: '1px solid rgba(255,255,255,0.1)', gap: '20px'
             }}
           >
-            <button 
-              className="btn" 
-              onClick={stopCamera}
-              style={{ 
-                color: '#fff', background: 'rgba(255,255,255,0.1)', 
-                width: '56px', height: '56px', borderRadius: '50%', 
-                padding: 0, justifyContent: 'center'
-              }}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+            {/* Mode Selector */}
 
-            <button 
-              onClick={takePhoto}
-              style={{
-                width: '84px', height: '84px', borderRadius: '50%',
-                background: '#fff', border: '8px solid rgba(255,255,255,0.2)',
-                padding: '0', cursor: 'pointer', transition: 'all 0.2s',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(0,0,0,0.3)'
-              }}
-              onMouseDown={e => e.currentTarget.style.transform = 'scale(0.85)'}
-              onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              <div style={{ width: '60px', height: '60px', borderRadius: '50%', border: '3px solid #000' }} />
-            </button>
 
-            <button 
-              className="btn"
-              onClick={toggleCamera}
-              style={{ 
-                color: '#fff', background: 'rgba(255,255,255,0.1)', 
-                width: '56px', height: '56px', borderRadius: '50%', 
-                padding: 0, justifyContent: 'center'
-              }}
-              title="Switch Camera"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-              </svg>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', width: '100%', padding: '0 40px' }}>
+              <button 
+                className="btn" 
+                onClick={stopCamera}
+                disabled={isRecording}
+                style={{ 
+                  color: '#fff', background: 'rgba(255,255,255,0.1)', 
+                  width: '56px', height: '56px', borderRadius: '50%', 
+                  padding: 0, justifyContent: 'center', opacity: isRecording ? 0.3 : 1
+                }}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+
+              <button 
+                onClick={cameraMode === 'video' ? (isRecording ? stopRecordingCapture : startRecording) : takePhoto}
+                style={{
+                  width: '88px', height: '88px', borderRadius: '50%',
+                  background: cameraMode === 'video' ? (isRecording ? '#fff' : '#EF4444') : '#fff',
+                  border: `6px solid ${isRecording ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'}`,
+                  padding: '4px', cursor: 'pointer', transition: 'all 0.2s',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  boxShadow: isRecording ? '0 0 30px rgba(239, 68, 68, 0.6)' : '0 4px 15px rgba(0,0,0,0.3)'
+                }}
+              >
+                {cameraMode === 'video' && isRecording ? (
+                  <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#EF4444' }} />
+                ) : (
+                  <div style={{ 
+                    width: '64px', height: '64px', borderRadius: '50%', 
+                    border: '3px solid rgba(0,0,0,0.1)',
+                    background: cameraMode === 'video' ? '#EF4444' : '#fff'
+                  }} />
+                )}
+              </button>
+
+              <button 
+                className="btn"
+                onClick={() => setCameraMode(prev => prev === 'photo' ? 'video' : 'photo')}
+                disabled={isRecording}
+                style={{ 
+                  color: '#fff', background: 'rgba(255,255,255,0.1)', 
+                  width: '56px', height: '56px', borderRadius: '50%', 
+                  padding: 0, justifyContent: 'center',
+                  opacity: isRecording ? 0.3 : 1
+                }}
+                title={cameraMode === 'photo' ? "Switch to Video" : "Switch to Photo"}
+              >
+                {cameraMode === 'photo' ? (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                  </svg>
+                ) : (
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

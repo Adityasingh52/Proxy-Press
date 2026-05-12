@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  const session = request.cookies.get('proxypress_session');
+  const session = request.cookies.get('proxypress_session') || 
+                  request.cookies.get('next-auth.session-token') ||
+                  request.cookies.get('__Secure-next-auth.session-token');
   const onboarded = request.cookies.get('proxypress_onboarded');
   const { pathname } = request.nextUrl;
 
@@ -20,7 +22,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Has session but not onboarded → redirect to /onboarding
-  if (session && onboarded?.value === '0' && pathname !== '/onboarding' && !isPublicPath && !pathname.startsWith('/uploads')) {
+  if (session && onboarded?.value !== '1' && pathname !== '/onboarding' && !isPublicPath && !pathname.startsWith('/uploads')) {
     return NextResponse.redirect(new URL('/onboarding', request.url));
   }
 

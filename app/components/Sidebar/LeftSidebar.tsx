@@ -173,14 +173,19 @@ export default function LeftSidebar() {
             >
               <div style={{
                 width: '36px', height: '36px', borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--primary), #8B5CF6)',
+                background: 'var(--surface-3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '16px', flexShrink: 0,
                 overflow: 'hidden',
               }}>
-                {user.profilePicture ? (
-                  <img src={user.profilePicture} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (user.avatar || '👤')}
+                {(() => {
+                  const picUrl = user.profilePicture || user.image;
+                  if (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:'))) {
+                    return <img src={picUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                  }
+                  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff`;
+                  return <img src={avatarUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                })()}
               </div>
               <div style={{ overflow: 'hidden' }}>
                 <div style={{ fontWeight: 600, fontSize: '13px', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

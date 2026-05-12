@@ -4,7 +4,7 @@ import { useState, useEffect, use, useRef } from 'react';
 import { posts as mockPosts, currentUser as mockUser } from '@/lib/data';
 import '../profile.css';
 import Link from 'next/link';
-import { getInitialData, getCurrentUser, getUserProfile, blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing } from '@/lib/actions';
+import { getInitialData, getCurrentUser, getUserProfile, blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus } from '@/lib/actions';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -30,6 +30,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const [savedPosts, setSavedPosts] = useState<any[]>([]);
   const [followersCount, setFollowersCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
+  const [isRequested, setIsRequested] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   // Options menu state
@@ -38,9 +39,12 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   const [isMuted, setIsMuted] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'danger' | 'info' } | null>(null);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showMuteConfirm, setShowMuteConfirm] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState('');
   const [userToUnfollow, setUserToUnfollow] = useState<{ id: string, name: string, isList: boolean, profilePicture?: string, avatar?: string } | null>(null);
+  const [showFullImage, setShowFullImage] = useState(false);
+  const [isClosingFullImage, setIsClosingFullImage] = useState(false);
 
   // Followers/Following Modal state
   const [showFollowModal, setShowFollowModal] = useState<{ title: string; type: 'followers' | 'following' } | null>(null);
@@ -64,6 +68,27 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     }
   }, [showOptionsMenu]);
 
+  const handleCloseFullImage = () => {
+    setIsClosingFullImage(true);
+    setTimeout(() => {
+      setShowFullImage(false);
+      setIsClosingFullImage(false);
+    }, 350);
+  };
+
+  // Handle Escape key for lightbox
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        handleCloseFullImage();
+      }
+    }
+    if (showFullImage) {
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [showFullImage]);
+
   // Auto-dismiss toast
   useEffect(() => {
     if (toast) {
@@ -75,10 +100,10 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     async function loadProfileData() {
       try {
-        const [currentUserData, targetUserData, data] = await Promise.all([
-          getCurrentUser(),
+        const currentUserData = await getCurrentUser();
+        const [targetUserData, data] = await Promise.all([
           getUserProfile(id),
-          getInitialData(),
+          getInitialData(currentUserData?.id),
         ]);
 
         if (currentUserData) {
@@ -92,9 +117,25 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
           const meFlag = targetUserId === currentUserId;
           setIsMe(meFlag);
           
+          // Calculate status
+          let statusDisplay = null;
+          if (targetUserData.showActivityStatus && !meFlag) {
+            if (targetUserData.lastSeen) {
+              const lastSeenDate = new Date(targetUserData.lastSeen);
+              const now = new Date();
+              const diffMs = now.getTime() - lastSeenDate.getTime();
+              const diffMin = Math.floor(diffMs / 60000);
+
+              if (diffMin < 5) {
+                statusDisplay = 'Active Now';
+              }
+            }
+          }
+
           setUser({
             ...targetUserData,
             postsCount: targetUserData.postsCount || (data?.posts?.filter((p: any) => p.authorId === targetUserId).length || 0),
+            statusDisplay,
           });
 
           if (data) {
@@ -111,14 +152,16 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
 
           // Load block/mute status and follow info for other users
           if (!meFlag) {
-            const [safetyStatus, followStatus, followCounts] = await Promise.all([
+            const [safetyStatus, followStatus, followCounts, requestStatus] = await Promise.all([
               getBlockStatus(targetUserId),
               getFollowStatus(targetUserId),
-              getFollowCounts(targetUserId)
+              getFollowCounts(targetUserId),
+              getFollowRequestStatus(targetUserId)
             ]);
             setIsBlocked(safetyStatus.blocked);
             setIsMuted(safetyStatus.muted);
             setIsFollowing(followStatus.following);
+            setIsRequested(requestStatus.requested);
             setFollowersCount(followCounts.followers);
             setFollowingCount(followCounts.following);
           } else {
@@ -169,9 +212,14 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
     setShowOptionsMenu(false);
   };
 
-  const handleMuteToggle = async () => {
-    if (!user) return;
+  const handleMuteToggle = () => {
+    setShowMuteConfirm(true);
     setShowOptionsMenu(false);
+  };
+
+  const handleMuteConfirm = async () => {
+    if (!user) return;
+    setShowMuteConfirm(false);
     const result = await muteUser(user.id);
     if (result.success) {
       const nowMuted = result.muted ?? !isMuted;
@@ -222,16 +270,41 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       return;
     }
 
+    if (isRequested) {
+      // Cancel request
+      setIsRequested(false);
+      try {
+        await toggleFollow(user.id);
+      } catch (err) {
+        setIsRequested(true);
+        setToast({ message: 'Failed to cancel request', type: 'danger' });
+      }
+      return;
+    }
+
     // Follow Optimistic UI
-    setIsFollowing(true);
-    setFollowersCount(prev => prev + 1);
+    if (!user.isPrivate) {
+      setIsFollowing(true);
+      setFollowersCount(prev => prev + 1);
+    } else {
+      setIsRequested(true);
+    }
 
     try {
       const result = await toggleFollow(user.id);
       if (!result.success) throw new Error(result.error);
+      
+      if (user.isPrivate) {
+        setIsRequested(result.requested ?? false);
+        setIsFollowing(false);
+      } else {
+        setIsFollowing(result.following ?? true);
+        setIsRequested(false);
+      }
     } catch (err) {
        setIsFollowing(false);
-       setFollowersCount(prev => prev - 1);
+       setIsRequested(false);
+       if (!user.isPrivate) setFollowersCount(prev => prev - 1);
        setToast({ message: 'Failed to follow user', type: 'danger' });
     }
   };
@@ -378,13 +451,16 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             </svg>
           </Link>
 
-          <div className="ig-avatar-ring jumbo">
+          <div className="ig-avatar-ring jumbo" onClick={() => setShowFullImage(true)} style={{ cursor: 'pointer' }}>
             <div className="ig-avatar-inner jumbo" style={{ overflow: 'hidden' }}>
-              {user.profilePicture ? (
-                <img src={user.profilePicture} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              ) : (
-                <div style={{ fontSize: '44px' }}>👤</div>
-              )}
+              {(() => {
+                const picUrl = user.profilePicture || user.image;
+                if (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:'))) {
+                  return <img src={picUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                }
+                const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=200`;
+                return <img src={avatarUrl} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+              })()}
             </div>
           </div>
           
@@ -412,9 +488,9 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
               {showOptionsMenu && (
                 <div style={{
                   position: 'absolute', top: '48px', right: '0',
-                  background: 'rgba(30, 30, 45, 0.95)', backdropFilter: 'blur(20px)',
-                  borderRadius: '16px', border: '1px solid rgba(255,255,255,0.08)',
-                  boxShadow: '0 16px 48px rgba(0,0,0,0.5)', overflow: 'hidden',
+                  background: 'rgba(var(--surface-rgb), 0.85)', backdropFilter: 'blur(24px) saturate(180%)',
+                  borderRadius: '16px', border: '1px solid var(--border)',
+                  boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
                   minWidth: '220px', zIndex: 200,
                   animation: 'fade-in 0.2s ease-out',
                 }}>
@@ -442,7 +518,7 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
                     Share Profile
                   </button>
 
-                  <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '4px 14px' }} />
+                  <div style={{ height: '1px', background: 'var(--border)', opacity: 0.5, margin: '4px 14px' }} />
 
                   {/* Mute */}
                   <button onClick={handleMuteToggle} style={{
@@ -491,15 +567,15 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       {/* ─── Block Confirmation Modal ─── */}
       {showBlockConfirm && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9000,
+          position: 'fixed', inset: 0, zIndex: 9000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)', animation: 'fade-in 0.2s ease-out',
+          animation: 'fade-in 0.2s ease-out',
         }} onClick={() => setShowBlockConfirm(false)}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: 'rgba(30, 30, 45, 0.98)', borderRadius: '20px',
-            padding: '28px', maxWidth: '340px', width: '90vw',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.5)', textAlign: 'center',
+            background: 'rgba(var(--surface-rgb), 0.98)', backdropFilter: 'blur(10px)', 
+            borderRadius: '24px', padding: '32px', maxWidth: '340px', width: '90vw',
+            border: '1px solid var(--border)', textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)'
           }}>
             <div style={{ fontSize: '40px', marginBottom: '12px' }}>
               {isBlocked ? '✅' : '🚫'}
@@ -514,15 +590,55 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
             </p>
             <div style={{ display: 'flex', gap: '12px' }}>
               <button onClick={() => setShowBlockConfirm(false)} style={{
-                flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)',
+                flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
                 background: 'transparent', color: 'var(--text-primary)', fontSize: '14px',
                 fontWeight: 600, cursor: 'pointer',
               }}>Cancel</button>
               <button onClick={handleBlockConfirm} style={{
                 flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
-                background: isBlocked ? '#10B981' : '#EF4444', color: '#fff', fontSize: '14px',
+                background: isBlocked ? '#10B981' : 'var(--accent)', color: '#fff', fontSize: '14px',
                 fontWeight: 600, cursor: 'pointer',
               }}>{isBlocked ? 'Unblock' : 'Block'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Mute Confirmation Modal ─── */}
+      {showMuteConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 9000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'fade-in 0.2s ease-out',
+        }} onClick={() => setShowMuteConfirm(false)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'rgba(var(--surface-rgb), 0.98)', backdropFilter: 'blur(10px)', 
+            borderRadius: '24px', padding: '32px', maxWidth: '340px', width: '90vw',
+            border: '1px solid var(--border)', textAlign: 'center',
+            boxShadow: 'var(--shadow-lg)'
+          }}>
+            <div style={{ fontSize: '40px', marginBottom: '12px' }}>
+              {isMuted ? '🔔' : '🔕'}
+            </div>
+            <h3 style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: 700, margin: '0 0 8px' }}>
+              {isMuted ? `Unmute ${user.name}?` : `Mute ${user.name}?`}
+            </h3>
+            <p style={{ color: 'var(--text-muted)', fontSize: '13px', lineHeight: 1.5, margin: '0 0 24px' }}>
+              {isMuted
+                ? 'You will start seeing their posts and stories in your feed again.'
+                : "You won't see their posts or stories in your feed. They won't be notified."}
+            </p>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={() => setShowMuteConfirm(false)} style={{
+                flex: 1, padding: '12px', borderRadius: '12px', border: '1px solid var(--border)',
+                background: 'transparent', color: 'var(--text-primary)', fontSize: '14px',
+                fontWeight: 600, cursor: 'pointer',
+              }}>Cancel</button>
+              <button onClick={handleMuteConfirm} style={{
+                flex: 1, padding: '12px', borderRadius: '12px', border: 'none',
+                background: isMuted ? '#10B981' : 'var(--accent)', color: '#fff', fontSize: '14px',
+                fontWeight: 600, cursor: 'pointer',
+              }}>{isMuted ? 'Unmute' : 'Mute'}</button>
             </div>
           </div>
         </div>
@@ -531,15 +647,14 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       {/* ─── Report Modal ─── */}
       {showReportModal && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9000,
+          position: 'fixed', inset: 0, zIndex: 9000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)', animation: 'fade-in 0.2s ease-out',
+          animation: 'fade-in 0.2s ease-out',
         }} onClick={() => { setShowReportModal(false); setReportReason(''); }}>
           <div onClick={e => e.stopPropagation()} style={{
-            background: 'rgba(30, 30, 45, 0.98)', borderRadius: '20px',
-            padding: '28px', maxWidth: '380px', width: '90vw',
-            border: '1px solid rgba(255,255,255,0.08)',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
+            background: 'rgba(var(--surface-rgb), 0.98)', backdropFilter: 'blur(10px)',
+            borderRadius: '24px', padding: '32px', maxWidth: '380px', width: '90vw',
+            border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)'
           }}>
             <h3 style={{ color: 'var(--text-primary)', fontSize: '18px', fontWeight: 700, margin: '0 0 6px', textAlign: 'center' }}>
               🚩 Report {user.name}
@@ -591,7 +706,23 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       )}
 
       <div className="ig-profile-bio-modern">
-        <h1 className="ig-display-name">{user.name}</h1>
+        <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+          <h1 className="ig-display-name" style={{ margin: 0 }}>{user.name}</h1>
+          {user.statusDisplay === 'Active Now' && (
+            <div 
+              title="Active Now"
+              style={{ 
+                position: 'absolute',
+                left: 'calc(100% + 8px)',
+                width: '10px', height: '10px', borderRadius: '50%',
+                background: '#10B981', 
+                border: '2px solid var(--surface)',
+                boxShadow: '0 0 8px rgba(16, 185, 129, 0.4)',
+                flexShrink: 0
+              }} 
+            />
+          )}
+        </div>
         {user.username && <p className="ig-handle-tag">@{user.username}</p>}
         <p className="ig-college-tag">
           {user.college || 'Campus Press'}
@@ -620,17 +751,21 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
 
       <div className="ig-profile-actions">
         {isMe ? (
-          <Link href="/settings/about" className="ig-action-btn ig-action-btn-secondary" style={{ flex: 1 }}>
+          <button
+            onClick={handleShareProfile}
+            className="ig-action-btn ig-action-btn-secondary"
+            style={{ flex: 1 }}
+          >
             Share Profile
-          </Link>
+          </button>
         ) : (
           <>
             <button
-              className={`ig-action-btn ${isFollowing ? 'ig-action-btn-following' : 'ig-action-btn-follow'}`}
+              className={`ig-action-btn ${isFollowing ? 'ig-action-btn-following' : isRequested ? 'ig-action-btn-secondary' : 'ig-action-btn-follow'}`}
               onClick={handleFollowToggle}
               style={{ flex: 2 }}
             >
-              {isFollowing ? 'Following' : 'Follow'}
+              {isFollowing ? 'Following' : isRequested ? 'Requested' : 'Follow'}
             </button>
             <Link href={`/messages?userId=${user.id}`} className="ig-action-btn ig-action-btn-message" style={{ flex: 2 }}>
               Message
@@ -662,7 +797,25 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       </div>
 
       {/* ─── Grid ─── */}
-      {displayPosts.length > 0 ? (
+      {!isMe && user.isPrivate && !isFollowing ? (
+        <div className="ig-private-account" style={{
+          padding: '60px 20px', textAlign: 'center',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          borderTop: '1px solid var(--border)', marginTop: '20px'
+        }}>
+          <div style={{
+            width: '80px', height: '80px', borderRadius: '50%',
+            border: '2px solid var(--text-primary)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', marginBottom: '20px'
+          }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 8px' }}>This Account is Private</h2>
+          <p style={{ fontSize: '14px', color: 'var(--text-muted)', maxWidth: '280px' }}>Follow this account to see their posts and stories.</p>
+        </div>
+      ) : displayPosts.length > 0 ? (
         <div className="ig-grid">
           {displayPosts.map(post => (
             <Link key={post.id} href={`/article/${post.slug}`} className="ig-grid-item">
@@ -684,16 +837,15 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
       {/* ─── Followers/Following Modal ─── */}
       {showFollowModal && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          position: 'fixed', inset: 0,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          backdropFilter: 'blur(4px)', animation: 'fade-in 0.2s ease-out',
+          animation: 'fade-in 0.2s ease-out',
           zIndex: 9000,
         }} onClick={() => setShowFollowModal(null)}>
           <div onClick={e => e.stopPropagation()} style={{
             background: 'var(--surface)', borderRadius: '20px',
             maxWidth: '400px', width: '90vw', maxHeight: '70vh',
             border: '1px solid var(--border)',
-            boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
             display: 'flex', flexDirection: 'column',
           }}>
             <div style={{
@@ -814,6 +966,48 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
         </div>
       )}
 
+      {/* ─── Full Image Overlay ─── */}
+      {showFullImage && (
+        <div 
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.01)',
+            display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+            paddingTop: '30px',
+            animation: isClosingFullImage ? 'fade-out 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards' : 'fade-in 0.45s cubic-bezier(0.22, 1, 0.36, 1)',
+            willChange: 'opacity',
+            cursor: 'zoom-out'
+          }}
+          onClick={handleCloseFullImage}
+        >
+          <div 
+            style={{ 
+              width: 'min(80vw, 400px)', height: 'min(80vw, 400px)',
+              borderRadius: '50%', overflow: 'hidden',
+              boxShadow: '0 0 120px rgba(0,0,0,0.6)',
+              border: '2px solid rgba(255,255,255,0.4)',
+              animation: isClosingFullImage ? 'zoom-out 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards' : 'zoom-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)',
+              willChange: 'transform, opacity'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {(() => {
+              const picUrl = user.profilePicture || user.image;
+              const finalUrl = (picUrl && (picUrl.startsWith('http') || picUrl.startsWith('/') || picUrl.startsWith('data:')))
+                ? picUrl
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=512`;
+              
+              return (
+                <img 
+                  src={finalUrl} 
+                  alt={user.name} 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                />
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

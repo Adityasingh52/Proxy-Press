@@ -8,8 +8,9 @@ export default function MainContent({ children }: { children: React.ReactNode })
   const isCreate = pathname.startsWith('/create');
   const isExplore = pathname.startsWith('/explore');
   const isSettings = pathname.startsWith('/settings');
+  const isArticle = pathname.startsWith('/article');
 
-  const showCondensedLayout = isProfile || isCreate || isExplore || isSettings;
+  const showCondensedLayout = isProfile || isCreate || isExplore || isSettings || isArticle;
 
   return (
     <main 

@@ -3,23 +3,23 @@
 import * as queries from './db/queries';
 import { db } from './db';
 import * as schema from './db/schema';
-import { writeFile, mkdir } from 'fs/promises';
+import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne, or } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
 import { sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 
 export async function getInitialData(userId?: string) {
   const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
-    queries.getPosts(),
+    queries.getPosts(userId),
     queries.getUsers(),
     queries.getCategories(),
     queries.getTrendingTopics(),
     queries.getAnnouncements(),
     queries.getNotifications(userId),
-    queries.getStories(),
+    queries.getStories(userId),
   ]);
 
   // Deep clone to ensure all data is perfectly serializable POJOs for RSC stream
@@ -34,49 +34,103 @@ export async function getInitialData(userId?: string) {
   }));
 }
 
-export async function getStories() {
-  const allStories = await queries.getStories();
+export async function getStories(userId?: string) {
+  const allStories = await queries.getStories(userId);
   // Filter out any story groupings that have 0 slides (e.g. all expired)
   const validStories = allStories.filter((s: any) => s.slides && s.slides.length > 0);
   return JSON.parse(JSON.stringify(validStories));
+}
+
+export async function markStoryAsSeen(storyUserId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false };
+
+  try {
+    await db.insert(schema.storyViews).values({
+      storyId: storyUserId,
+      viewerId: user.id,
+      createdAt: new Date().toISOString(),
+    }).onConflictDoNothing();
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to mark story as seen:', err);
+    return { success: false };
+  }
 }
 
 export async function getPostDetail(slug: string) {
   const post = await queries.getPostBySlug(slug);
   if (!post) return null;
   
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+  
+  let canComment = true;
+  const privacy = post.author?.commentPrivacy || 'Everyone';
+
+  if (privacy === 'No One') {
+    canComment = false;
+  } else if (privacy === 'People You Follow') {
+    if (!currentUserId) {
+      canComment = false;
+    } else if (post.authorId !== currentUserId) {
+      // Check if author follows current user
+      const follow = await db.query.follows.findFirst({
+        where: and(
+          eq(schema.follows.followerId, post.authorId),
+          eq(schema.follows.followingId, currentUserId)
+        )
+      });
+      if (!follow) canComment = false;
+    }
+  }
+  
   // Also get related posts from DB
   const related = await queries.getRelatedPosts(post.id, post.category || 'News');
   
-  return JSON.parse(JSON.stringify({ post, related }));
+  return JSON.parse(JSON.stringify({ post, related, canComment }));
 }
 
 export async function getConversations(userId: string) {
+  await cleanupExpiredMessages();
   return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
 }
 
+import { v2 as cloudinary } from 'cloudinary';
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 /**
- * Universal Media Upload Action
- * Saves files to public/uploads/{type} with UUID naming
+ * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
   const file = formData.get('file') as File;
-  const category = formData.get('category') as 'images' | 'videos' | 'stories';
+  const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
   
   if (!file) throw new Error('No file provided');
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const fileName = `${randomUUID()}-${file.name.replace(/\s+/g, '_')}`;
-  const relativePath = `/uploads/${category}/${fileName}`;
-  const absolutePath = join(process.cwd(), 'public', relativePath);
-
-  // Ensure directory exists (redundant if mkdir -p was run, but safe)
-  await mkdir(join(process.cwd(), 'public', 'uploads', category), { recursive: true });
   
-  await writeFile(absolutePath, buffer);
-
-  return { url: relativePath };
+  return new Promise<{url: string}>((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { 
+        folder: `proxy-press/${category}`,
+        resource_type: category === 'videos' || category === 'voice' ? 'video' : 'image' 
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve({ url: result?.secure_url as string });
+      }
+    );
+    uploadStream.end(buffer);
+  });
 }
+
+
 
 export async function createPost(data: {
   title: string;
@@ -84,6 +138,7 @@ export async function createPost(data: {
   content: string;
   category: string;
   imageUrl: string;
+  videoUrl?: string;
   authorId: string;
 }) {
   const id = `p${Date.now()}`;
@@ -98,11 +153,42 @@ export async function createPost(data: {
     category: data.category as any,
     authorId: data.authorId,
     imageUrl: data.imageUrl,
+    videoUrl: data.videoUrl,
     imageColor: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', // Default gradient
     publishedAt: new Date().toISOString(),
   });
 
   revalidatePath('/');
+
+  // Handle Mentions
+  await handleMentions(data.description + " " + data.content, data.authorId, id);
+
+  // Create Notifications for followers
+  try {
+    const followers = await getFollowers(data.authorId);
+    const notificationsToInsert = followers.map(follower => {
+      if (follower.notifyNewPosts) {
+        return {
+          id: `ntf${Date.now()}-${follower.id}`,
+          userId: follower.id,
+          actorId: data.authorId,
+          type: 'post',
+          message: 'published a new post',
+          postId: id,
+          timeAgo: 'just now',
+          isRead: false,
+        };
+      }
+      return null;
+    }).filter(n => n !== null);
+
+    if (notificationsToInsert.length > 0) {
+      await db.insert(schema.notifications).values(notificationsToInsert as any);
+    }
+  } catch (err) {
+    console.error('Failed to create new post notifications:', err);
+  }
+
   return { success: true, id };
 }
 
@@ -119,13 +205,25 @@ export async function sendMessage(data: {
   // Handle new conversation creation
   if (finalConversationId.startsWith('new_')) {
     const targetUserId = finalConversationId.replace('new_', '');
+    
+    // Check if either user is blocked
+    const block = await db.query.userBlocks.findFirst({
+      where: or(
+        and(eq(schema.userBlocks.userId, data.senderId), eq(schema.userBlocks.blockedId, targetUserId)),
+        and(eq(schema.userBlocks.userId, targetUserId), eq(schema.userBlocks.blockedId, data.senderId))
+      )
+    });
+    if (block) throw new Error('Cannot send message to a blocked user');
+
     const newConvId = `c${Date.now()}`;
+    
+    const nowIso = new Date().toISOString();
     
     // Create the conversation
     await db.insert(schema.conversations).values({
       id: newConvId,
       lastMessage: data.text,
-      lastMessageTime: 'Just now',
+      lastMessageTime: nowIso,
     });
 
     // Add participants
@@ -135,28 +233,197 @@ export async function sendMessage(data: {
     ]);
 
     finalConversationId = newConvId;
+  } else {
+    // Check blocks for existing conversation
+    const participants = await db.query.conversationParticipants.findMany({
+      where: eq(schema.conversationParticipants.conversationId, finalConversationId)
+    });
+    const otherParticipant = participants.find(p => p.userId !== data.senderId);
+    
+    if (otherParticipant && otherParticipant.userId) {
+       const block = await db.query.userBlocks.findFirst({
+         where: or(
+           and(eq(schema.userBlocks.userId, data.senderId), eq(schema.userBlocks.blockedId, otherParticipant.userId)),
+           and(eq(schema.userBlocks.userId, otherParticipant.userId), eq(schema.userBlocks.blockedId, data.senderId))
+         )
+       });
+       if (block) throw new Error('Cannot send message in a blocked conversation');
+    }
   }
+
+  // Check for vanish mode and duration
+  const conversation = await db.query.conversations.findFirst({
+    where: eq(schema.conversations.id, finalConversationId)
+  });
+
+  let expiresAt: Date | null = null;
+  if (conversation?.vanishMode && conversation.vanishDuration) {
+    expiresAt = new Date(Date.now() + conversation.vanishDuration * 1000);
+  }
+  
+  const nowIso = new Date().toISOString();
   
   await db.insert(schema.messages).values({
     id: messageId,
     conversationId: finalConversationId,
     senderId: data.senderId,
     text: data.text,
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    timestamp: nowIso,
     seen: false,
     type: data.type as any,
     attachment: data.attachment,
+    expiresAt: expiresAt,
+    replyTo: (data as any).replyTo,
   });
 
-  // Update conversation last message (simplified)
-  if (!data.conversationId.startsWith('new_')) {
-    await db.update(schema.conversations)
-      .set({ lastMessage: data.text, lastMessageTime: 'Just now' })
-      .where(eq(schema.conversations.id, finalConversationId));
-  }
+  // Update conversation last message
+  await db.update(schema.conversations)
+    .set({ 
+      lastMessage: data.text, 
+      lastMessageTime: nowIso 
+    })
+    .where(eq(schema.conversations.id, finalConversationId));
+
+  // Cleanup expired messages in this conversation (triggered on new message)
+  await cleanupExpiredMessages();
 
   revalidatePath('/messages');
   return { success: true, id: messageId, conversationId: finalConversationId };
+}
+
+export async function updateConversationMute(conversationId: string, muted: boolean) {
+  await db.update(schema.conversations)
+    .set({ muted })
+    .where(eq(schema.conversations.id, conversationId));
+  
+  revalidatePath('/messages');
+  return { success: true };
+}
+
+export async function updateConversationVanishMode(conversationId: string, vanishMode: boolean, duration?: number) {
+  await db.update(schema.conversations)
+    .set({ 
+      vanishMode,
+      ...(duration !== undefined ? { vanishDuration: duration } : {})
+    })
+    .where(eq(schema.conversations.id, conversationId));
+  
+  revalidatePath('/messages');
+  return { success: true };
+}
+
+export async function editMessage(messageId: string, newText: string) {
+  try {
+    await db.update(schema.messages)
+      .set({ 
+        text: newText,
+        isEdited: true 
+      })
+      .where(eq(schema.messages.id, messageId));
+    
+    revalidatePath('/messages');
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to edit message:', err);
+    return { success: false };
+  }
+}
+
+export async function deleteMessage(messageId: string) {
+  try {
+    // Soft delete: keep the record but mark as deleted
+    await db.update(schema.messages)
+      .set({ 
+        isDeleted: true,
+        text: 'This message was deleted',
+        attachment: null 
+      })
+      .where(eq(schema.messages.id, messageId));
+    
+    revalidatePath('/messages');
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to delete message:', err);
+    return { success: false };
+  }
+}
+
+export async function deleteConversation(conversationId: string) {
+  try {
+    // 1. Find all messages with attachments to delete physical files
+    const messagesWithAttachments = await db.select({ attachment: schema.messages.attachment })
+      .from(schema.messages)
+      .where(and(
+        eq(schema.messages.conversationId, conversationId),
+        sql`${schema.messages.attachment} IS NOT NULL`
+      ));
+
+    // 2. Delete physical files from Cloudinary
+    for (const msg of messagesWithAttachments) {
+      if (msg.attachment && msg.attachment.includes('cloudinary.com')) {
+        try {
+          // Extract public_id from URL: e.g. https://res.cloudinary.com/.../upload/v123/proxy-press/images/file.jpg
+          const urlParts = msg.attachment.split('/upload/');
+          if (urlParts.length > 1) {
+            const afterUpload = urlParts[1];
+            // Remove the version (e.g., v1234/) if it exists
+            const pathParts = afterUpload.split('/');
+            const pathStart = pathParts[0].startsWith('v') && !isNaN(parseInt(pathParts[0].substring(1))) ? 1 : 0;
+            const fullPath = pathParts.slice(pathStart).join('/');
+            // Remove file extension
+            const publicId = fullPath.substring(0, fullPath.lastIndexOf('.'));
+            
+            // Note: If resource_type is video, it needs { resource_type: 'video' }, but destroy tries 'image' by default.
+            // We can determine resource type by checking the URL or just calling both if one fails.
+            await cloudinary.uploader.destroy(publicId).catch(() => cloudinary.uploader.destroy(publicId, { resource_type: 'video' }));
+          }
+        } catch (err) {
+          console.warn(`Could not delete file at ${msg.attachment}:`, err);
+        }
+      }
+    }
+
+    // 3. Explicitly delete messages and participants
+    await db.delete(schema.messages)
+      .where(eq(schema.messages.conversationId, conversationId));
+    
+    await db.delete(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.conversationId, conversationId));
+
+    await db.delete(schema.conversations)
+      .where(eq(schema.conversations.id, conversationId));
+    
+    revalidatePath('/messages');
+    revalidatePath('/', 'layout');
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to delete conversation:', err);
+    return { success: false };
+  }
+}
+
+
+
+export async function cleanupExpiredMessages() {
+  const now = new Date();
+  await db.delete(schema.messages)
+    .where(sql`${schema.messages.expiresAt} IS NOT NULL AND ${schema.messages.expiresAt} <= ${now.getTime()}`);
+}
+
+export async function markMessagesAsSeen(conversationId: string, userId: string) {
+  await cleanupExpiredMessages();
+  if (!conversationId || conversationId.startsWith('new_')) return { success: true };
+
+  await db.update(schema.messages)
+    .set({ seen: true })
+    .where(and(
+      eq(schema.messages.conversationId, conversationId),
+      ne(schema.messages.senderId, userId),
+      eq(schema.messages.seen, false)
+    ));
+
+  revalidatePath('/messages');
+  return { success: true };
 }
 
 
@@ -217,7 +484,36 @@ export async function togglePostLike(postId: string, userId: string) {
   }
 
   revalidatePath('/');
-  revalidatePath(`/article/`); // Ideally we'd have the slug here but / handles it
+  revalidatePath(`/article/`);
+
+  // Create Notification
+  if (!existing) {
+    try {
+      const post = await db.query.posts.findFirst({
+        where: eq(schema.posts.id, postId),
+        with: { author: true }
+      });
+
+      if (post && post.authorId !== userId && post.author?.notifyLikes) {
+        // Use a deterministic ID to avoid race conditions (duplicates from rapid clicking)
+        const notificationId = `like-${postId}-${userId}`;
+        
+        await db.insert(schema.notifications).values({
+          id: notificationId,
+          userId: post.authorId,
+          actorId: userId,
+          type: 'like',
+          message: 'liked your post',
+          postId: postId,
+          timeAgo: 'just now',
+          isRead: false,
+        }).onConflictDoNothing();
+      }
+    } catch (err) {
+      console.error('Failed to create like notification:', err);
+    }
+  }
+
   return { success: true };
 }
 
@@ -228,7 +524,35 @@ export async function addPostComment(data: {
   parentId?: string;
 }) {
   const id = `c${Date.now()}`;
+
+  // 1. Get the post and author's privacy settings
+  const post = await db.query.posts.findFirst({
+    where: eq(schema.posts.id, data.postId),
+    with: { author: true }
+  });
+
+  if (!post) throw new Error('Post not found');
+
+  // 2. Check comment privacy
+  const privacy = post.author?.commentPrivacy || 'Everyone';
   
+  if (privacy === 'No One') {
+    throw new Error('Comments are disabled for this account');
+  }
+
+  if (privacy === 'People You Follow') {
+    // Check if post author follows the commenter
+    const follow = await db.query.follows.findFirst({
+      where: and(
+        eq(schema.follows.followerId, post.authorId),
+        eq(schema.follows.followingId, data.userId)
+      )
+    });
+    if (!follow) {
+      throw new Error('Only people followed by the author can comment');
+    }
+  }
+
   await db.insert(schema.postComments).values({
     id,
     postId: data.postId,
@@ -244,7 +568,80 @@ export async function addPostComment(data: {
     .where(eq(schema.posts.id, data.postId));
 
   revalidatePath('/');
+
+  // Create Notification for Post Author
+  try {
+    if (post && post.authorId !== data.userId && post.author?.notifyComments) {
+      await db.insert(schema.notifications).values({
+        id: `ntf-c-${id}`, 
+        userId: post.authorId,
+        actorId: data.userId,
+        type: 'comment',
+        message: 'commented on your post',
+        postId: data.postId,
+        timeAgo: 'just now',
+        isRead: false,
+      }).onConflictDoNothing();
+    }
+  } catch (err) {
+    console.error('Failed to create comment notification:', err);
+  }
+
+  // Handle Mentions
+  await handleMentions(data.text, data.userId, data.postId, id);
+
   return { success: true, id };
+}
+
+async function handleMentions(text: string, actorId: string, postId: string, commentId?: string) {
+  const mentionRegex = /@(\w+)/g;
+  const matches = text.matchAll(mentionRegex);
+  const usernames = Array.from(new Set(Array.from(matches).map(m => m[1])));
+
+  if (usernames.length === 0) return;
+
+  for (const username of usernames) {
+    try {
+      const target = await db.query.users.findFirst({
+        where: eq(schema.users.username, username)
+      });
+
+      if (!target || target.id === actorId) continue;
+
+      // Check Mention Privacy
+      const privacy = target.mentionPrivacy || 'Everyone';
+      if (privacy === 'No One') continue;
+
+      if (privacy === 'People You Follow') {
+        // Check if target follows actor
+        const follow = await db.query.follows.findFirst({
+          where: and(
+            eq(schema.follows.followerId, target.id),
+            eq(schema.follows.followingId, actorId)
+          )
+        });
+        if (!follow) continue;
+      }
+
+      // Check Notification Setting
+      if (!target.notifyMentions) continue;
+
+      // Send Notification
+      await db.insert(schema.notifications).values({
+        id: `ntf-m-${target.id}-${commentId || postId}-${Date.now()}`,
+        userId: target.id,
+        actorId: actorId,
+        type: 'mention',
+        message: commentId ? 'mentioned you in a comment' : 'mentioned you in a post',
+        postId: postId,
+        timeAgo: 'just now',
+        isRead: false,
+      }).onConflictDoNothing();
+
+    } catch (err) {
+      console.error(`Failed to handle mention for ${username}:`, err);
+    }
+  }
 }
 
 export async function toggleCommentLike(commentId: string, userId: string) {
@@ -470,6 +867,9 @@ export async function getCurrentUser() {
 }
 
 export async function getUserProfile(idOrHandle: string) {
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+
   // 1. Try fetching by exact ID
   let user = await db.query.users.findFirst({
     where: eq(schema.users.id, idOrHandle),
@@ -482,7 +882,20 @@ export async function getUserProfile(idOrHandle: string) {
     });
   }
 
-  return user ? JSON.parse(JSON.stringify(user)) : null;
+  if (!user) return null;
+
+  // 3. Check if current user is blocked by target user
+  if (currentUserId) {
+    const block = await db.query.userBlocks.findFirst({
+      where: and(
+        eq(schema.userBlocks.userId, user.id), // Target user is the blocker
+        eq(schema.userBlocks.blockedId, currentUserId) // I am the blocked one
+      )
+    });
+    if (block) return null; // Blocked user cannot see profile
+  }
+
+  return JSON.parse(JSON.stringify(user));
 }
 
 // ─── Safety Features ───
@@ -499,7 +912,6 @@ export async function blockUser(targetId: string) {
       eq(schema.userBlocks.blockedId, targetId)
     ),
   });
-
   if (existing) {
     return { success: true, alreadyBlocked: true };
   }
@@ -510,7 +922,23 @@ export async function blockUser(targetId: string) {
     createdAt: new Date().toISOString(),
   });
 
+  revalidatePath('/');
   return { success: true };
+}
+
+export async function getBlockedUsers() {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('proxypress_session')?.value;
+  if (!userId) return [];
+
+  const blocks = await db.query.userBlocks.findMany({
+    where: eq(schema.userBlocks.userId, userId),
+    with: {
+      blockedUser: true
+    }
+  });
+
+  return JSON.parse(JSON.stringify(blocks.map(b => b.blockedUser)));
 }
 
 export async function unblockUser(targetId: string) {
@@ -524,6 +952,7 @@ export async function unblockUser(targetId: string) {
       eq(schema.userBlocks.blockedId, targetId)
     ));
 
+  revalidatePath('/');
   return { success: true };
 }
 
@@ -546,6 +975,7 @@ export async function muteUser(targetId: string) {
         eq(schema.userMutes.userId, userId),
         eq(schema.userMutes.mutedId, targetId)
       ));
+    revalidatePath('/');
     return { success: true, muted: false };
   }
 
@@ -554,7 +984,7 @@ export async function muteUser(targetId: string) {
     mutedId: targetId,
     createdAt: new Date().toISOString(),
   });
-
+  revalidatePath('/');
   return { success: true, muted: true };
 }
 
@@ -572,6 +1002,52 @@ export async function reportUser(targetId: string, reason: string) {
   });
 
   return { success: true };
+}
+
+export async function reportPost(postId: string, reason: string) {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('proxypress_session')?.value;
+  if (!userId) return { success: false, error: 'Not authenticated' };
+
+  await db.insert(schema.postReports).values({
+    id: `prp${Date.now()}`,
+    reporterId: userId,
+    postId,
+    reason,
+    createdAt: new Date().toISOString(),
+  });
+
+  return { success: true };
+}
+
+export async function getReportsAction() {
+  const user = await getCurrentUser();
+  if (!user || user.role !== 'admin') {
+    throw new Error('Unauthorized');
+  }
+
+  const [userReports, postReports] = await Promise.all([
+    db.query.userReports.findMany({
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
+      with: {
+        reporter: true,
+        target: true,
+      },
+    }),
+    db.query.postReports.findMany({
+      orderBy: (r, { desc }) => [desc(r.createdAt)],
+      with: {
+        reporter: true,
+        post: {
+          with: {
+            author: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return JSON.parse(JSON.stringify({ userReports, postReports }));
 }
 
 export async function getBlockStatus(targetId: string) {
@@ -606,6 +1082,12 @@ export async function toggleFollow(targetId: string) {
 
   if (userId === targetId) return { success: false, error: 'Cannot follow yourself' };
 
+  const targetUser = await db.query.users.findFirst({
+    where: eq(schema.users.id, targetId)
+  });
+
+  if (!targetUser) return { success: false, error: 'User not found' };
+
   const existing = await db.query.follows.findFirst({
     where: and(
       eq(schema.follows.followerId, userId),
@@ -635,7 +1117,54 @@ export async function toggleFollow(targetId: string) {
     revalidatePath(`/profile/${targetId}`);
     return { success: true, following: false };
   } else {
-    // Follow
+    // Check if user is private
+    if (targetUser.isPrivate) {
+      // Check if already requested
+      const existingRequest = await db.query.followRequests.findFirst({
+        where: and(
+          eq(schema.followRequests.followerId, userId),
+          eq(schema.followRequests.followingId, targetId)
+        )
+      });
+
+      if (existingRequest) {
+        // Cancel request
+        await db.delete(schema.followRequests)
+          .where(eq(schema.followRequests.id, existingRequest.id));
+        
+        revalidatePath(`/profile/${targetId}`);
+        return { success: true, following: false, requested: false };
+      }
+
+      // Create follow request
+      const requestId = `frq${Date.now()}`;
+      await db.insert(schema.followRequests).values({
+        id: requestId,
+        followerId: userId,
+        followingId: targetId,
+      });
+
+      // Create Notification for the request
+      try {
+        await db.insert(schema.notifications).values({
+          id: `ntf-frq-${requestId}`,
+          userId: targetId,
+          actorId: userId,
+          type: 'follow_request',
+          message: `requested to follow you`,
+          timeAgo: 'just now',
+          createdAt: new Date().toISOString(),
+          isRead: false,
+        });
+      } catch (err) {
+        console.error('Failed to create follow request notification:', err);
+      }
+
+      revalidatePath(`/profile/${targetId}`);
+      return { success: true, following: false, requested: true };
+    }
+
+    // Direct Follow
     await db.insert(schema.follows).values({
       followerId: userId,
       followingId: targetId,
@@ -653,7 +1182,6 @@ export async function toggleFollow(targetId: string) {
 
     // Create Notification
     try {
-      const actor = await db.query.users.findFirst({ where: eq(schema.users.id, userId) });
       await db.insert(schema.notifications).values({
         id: `ntf${Date.now()}`,
         userId: targetId,
@@ -675,6 +1203,126 @@ export async function toggleFollow(targetId: string) {
   }
 }
 
+export async function getFollowRequestStatus(targetId: string) {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('proxypress_session')?.value;
+  if (!userId) return { requested: false };
+
+  const request = await db.query.followRequests.findFirst({
+    where: and(
+      eq(schema.followRequests.followerId, userId),
+      eq(schema.followRequests.followingId, targetId)
+    ),
+  });
+
+  return { requested: !!request };
+}
+
+export async function getFollowRequests() {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const requests = await db.query.followRequests.findMany({
+    where: eq(schema.followRequests.followingId, user.id),
+    with: {
+      follower: true
+    }
+  });
+
+  return JSON.parse(JSON.stringify(requests));
+}
+
+export async function respondToFollowRequest(requestId: string, accept: boolean) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: 'Not authenticated' };
+
+  const request = await db.query.followRequests.findFirst({
+    where: eq(schema.followRequests.id, requestId)
+  });
+
+  if (!request || request.followingId !== user.id) {
+    return { success: false, error: 'Request not found' };
+  }
+
+  if (accept) {
+    // 1. Create Follow
+    await db.insert(schema.follows).values({
+      followerId: request.followerId,
+      followingId: user.id,
+      createdAt: new Date().toISOString(),
+    });
+
+    // 2. Update Counts
+    await db.update(schema.users)
+      .set({ followers: sql`${schema.users.followers} + 1` })
+      .where(eq(schema.users.id, user.id));
+    
+    await db.update(schema.users)
+      .set({ following: sql`${schema.users.following} + 1` })
+      .where(eq(schema.users.id, request.followerId));
+
+    // 3. Create Notification for the follower
+    try {
+      await db.insert(schema.notifications).values({
+        id: `ntf-fra-${requestId}`,
+        userId: request.followerId,
+        actorId: user.id,
+        type: 'follow_accept',
+        message: `accepted your follow request`,
+        timeAgo: 'just now',
+        createdAt: new Date().toISOString(),
+        isRead: false,
+      });
+    } catch (err) {
+      console.error('Failed to create follow accept notification:', err);
+    }
+  }
+
+  // 4. Delete the request
+  await db.delete(schema.followRequests).where(eq(schema.followRequests.id, requestId));
+
+  revalidatePath('/settings/privacy');
+  revalidatePath('/notifications');
+  return { success: true };
+}
+
+export async function updateAccountPrivacy(isPrivate: boolean) {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('proxypress_session')?.value;
+  if (!userId) return { success: false, error: 'Not authenticated' };
+
+  await db.update(schema.users)
+    .set({ isPrivate })
+    .where(eq(schema.users.id, userId));
+
+  revalidatePath('/settings/privacy');
+  revalidatePath('/profile');
+  return { success: true };
+}
+
+export async function updateActivityStatus(show: boolean) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: 'Not authenticated' };
+
+  await db.update(schema.users)
+    .set({ showActivityStatus: show })
+    .where(eq(schema.users.id, user.id));
+
+  revalidatePath('/settings/privacy');
+  return { success: true };
+}
+
+export async function recordUserActivity() {
+  const user = await getCurrentUser();
+  if (!user) return { success: false };
+
+  await db.update(schema.users)
+    .set({ lastSeen: new Date().toISOString() })
+    .where(eq(schema.users.id, user.id));
+
+  return { success: true };
+}
+
 export async function getFollowStatus(targetId: string) {
   const cookieStore = await cookies();
   const userId = cookieStore.get('proxypress_session')?.value;
@@ -688,6 +1336,145 @@ export async function getFollowStatus(targetId: string) {
   });
 
   return { following: !!follow };
+}
+
+export async function submitFeedback(data: { type: string; message: string }) {
+  const user = await getCurrentUser();
+  const userId = user?.id;
+  
+  // --- INDUSTRY LEVEL: Rate Limiting ---
+  // Check if this user sent feedback in the last 2 minutes
+  if (userId) {
+    const lastFeedback = await db.query.feedback.findFirst({
+      where: eq(schema.feedback.userId, userId),
+      orderBy: (fb, { desc }) => [desc(fb.createdAt)],
+    });
+
+    if (lastFeedback) {
+      const lastTime = new Date(lastFeedback.createdAt).getTime();
+      const now = Date.now();
+      if (now - lastTime < 2 * 60 * 1000) { // 2 minutes
+        throw new Error('Please wait before sending another feedback.');
+      }
+    }
+  }
+
+  const id = `fb${Date.now()}`;
+  
+  await db.insert(schema.feedback).values({
+    id,
+    userId: userId || null,
+    type: data.type,
+    message: data.message,
+  });
+
+  return { success: true };
+}
+
+export async function getFeedbackAction() {
+  const user = await getCurrentUser();
+  
+  // --- INDUSTRY LEVEL: Admin Protection ---
+  if (!user || user.role !== 'admin') {
+    throw new Error('Unauthorized access');
+  }
+
+  const allFeedback = await db.query.feedback.findMany({
+    orderBy: (fb, { desc }) => [desc(fb.createdAt)],
+    with: {
+      user: true
+    }
+  });
+
+  return JSON.parse(JSON.stringify(allFeedback));
+}
+
+export async function replyToFeedback(feedbackId: string, replyText: string) {
+  const admin = await getCurrentUser();
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Unauthorized');
+  }
+
+  // 1. Update the feedback record
+  await db.update(schema.feedback)
+    .set({ reply: replyText })
+    .where(eq(schema.feedback.id, feedbackId));
+
+  // 2. Find the user to notify
+  const fb = await db.query.feedback.findFirst({
+    where: eq(schema.feedback.id, feedbackId),
+  });
+
+  if (fb && fb.userId) {
+    // 3. Create a notification
+    await db.insert(schema.notifications).values({
+      id: `reply-${feedbackId}`,
+      userId: fb.userId,
+      actorId: admin.id,
+      type: 'alert',
+      message: `responded to your feedback: "${replyText.slice(0, 50)}${replyText.length > 50 ? '...' : ''}"`,
+      timeAgo: 'just now',
+      isRead: false,
+    });
+  }
+
+  revalidatePath('/admin/feedback');
+  return { success: true };
+}
+
+export async function getAllPostsAdmin() {
+  const admin = await getCurrentUser();
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Unauthorized access');
+  }
+
+  const allPosts = await db.query.posts.findMany({
+    orderBy: (p, { desc }) => [desc(p.publishedAt)],
+    with: {
+      author: true,
+    }
+  });
+
+  return JSON.parse(JSON.stringify(allPosts));
+}
+
+export async function adminDeletePost(postId: string, reason: string) {
+  const admin = await getCurrentUser();
+  if (!admin || admin.role !== 'admin') {
+    throw new Error('Unauthorized');
+  }
+
+  // Find the post to get the author
+  const post = await db.query.posts.findFirst({
+    where: eq(schema.posts.id, postId),
+  });
+
+  if (!post) throw new Error('Post not found');
+
+  // 1. Delete related data first (likes, comments, saves)
+  await db.delete(schema.postLikes).where(eq(schema.postLikes.postId, postId));
+  await db.delete(schema.postComments).where(eq(schema.postComments.postId, postId));
+  await db.delete(schema.postSaves).where(eq(schema.postSaves.postId, postId));
+
+  // 2. Delete the post
+  await db.delete(schema.posts).where(eq(schema.posts.id, postId));
+
+  // 3. Notify the user
+  if (post.authorId) {
+    await db.insert(schema.notifications).values({
+      id: `del-${postId}-${Date.now()}`,
+      userId: post.authorId,
+      actorId: admin.id,
+      type: 'alert',
+      message: `Your post "${post.title.slice(0, 30)}${post.title.length > 30 ? '...' : ''}" was removed. Reason: ${reason}`,
+      timeAgo: 'just now',
+      isRead: false,
+    });
+  }
+
+  revalidatePath('/admin/posts');
+  revalidatePath('/');
+  return { success: true };
 }
 
 export async function getFollowCounts(userId: string) {
@@ -724,11 +1511,21 @@ export async function getFollowing(userId: string) {
 
 export async function searchExploreAction(query: string) {
   if (!query) return { users: [], posts: [] };
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+
   const [users, posts] = await Promise.all([
-    queries.searchUsers(query),
+    queries.searchUsers(query, currentUserId),
     queries.searchPosts(query)
   ]);
   return { users, posts };
+}
+
+export async function searchUsersInMessaging(query: string) {
+  if (!query) return [];
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+  return await queries.searchUsers(query, currentUserId);
 }
 
 export async function getExploreDataAction() {
@@ -754,6 +1551,14 @@ export async function getNotificationsAction() {
   return JSON.parse(JSON.stringify(notifs));
 }
 
+export async function getPostById(id: string) {
+  const post = await db.query.posts.findFirst({
+    where: eq(schema.posts.id, id),
+    with: { author: true }
+  });
+  return post ? JSON.parse(JSON.stringify(post)) : null;
+}
+
 export async function markNotificationRead(id: string) {
   await db.update(schema.notifications)
     .set({ isRead: true })
@@ -766,3 +1571,72 @@ export async function dismissNotification(id: string) {
     .where(eq(schema.notifications.id, id));
   return { success: true };
 }
+
+export async function updateUserNotificationSettings(settings: {
+  notifyLikes: boolean;
+  notifyComments: boolean;
+  notifyMentions: boolean;
+  notifyNewPosts: boolean;
+}) {
+  const cookieStore = await cookies();
+  const userId = cookieStore.get('proxypress_session')?.value;
+  if (!userId) return { success: false, error: 'Not authenticated' };
+
+  await db.update(schema.users)
+    .set(settings)
+    .where(eq(schema.users.id, userId));
+
+  revalidatePath('/settings/notifications');
+  return { success: true };
+}
+
+export async function updatePost(postId: string, data: {
+  title: string;
+  description: string;
+  content: string;
+  category: string;
+  imageUrl: string;
+  videoUrl?: string;
+}) {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const post = await db.query.posts.findFirst({
+    where: eq(schema.posts.id, postId),
+  });
+
+  if (!post) throw new Error('Post not found');
+  // Only author can edit
+  if (post.authorId !== user.id) throw new Error('Unauthorized');
+
+  await db.update(schema.posts).set({
+    title: data.title,
+    description: data.description,
+    content: data.content,
+    category: data.category as any,
+    imageUrl: data.imageUrl,
+    videoUrl: data.videoUrl,
+  }).where(eq(schema.posts.id, postId));
+
+  revalidatePath('/');
+  revalidatePath(`/article/${post.slug}`);
+  
+  return { success: true };
+}
+
+export async function updateInteractionPrivacy(settings: {
+  commentPrivacy?: string;
+  mentionPrivacy?: string;
+}) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false, error: 'Not authenticated' };
+
+  await db.update(schema.users)
+    .set(settings)
+    .where(eq(schema.users.id, user.id));
+
+  revalidatePath('/settings/privacy/interactions');
+  return { success: true };
+}
+
+

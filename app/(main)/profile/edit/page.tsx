@@ -82,7 +82,6 @@ export default function EditProfilePage() {
 
   // Avatar State
   const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
-  const [avatarPosition, setAvatarPosition] = useState({ x: 50, y: 50 });
   const [pendingAvatar, setPendingAvatar] = useState<string | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -102,9 +101,9 @@ export default function EditProfilePage() {
     }
   };
 
-  const handleAdjustmentSave = (position: { x: number, y: number }) => {
-    setAvatarPosition(position);
-    setSelectedAvatar(pendingAvatar);
+  const handleAdjustmentSave = (file: File, previewUrl: string) => {
+    setAvatarFile(file);
+    setSelectedAvatar(previewUrl);
     setShowAdjustModal(false);
   };
 
@@ -242,8 +241,7 @@ export default function EditProfilePage() {
                   style={{ 
                     width: '100%', 
                     height: '100%', 
-                    objectFit: 'cover',
-                    objectPosition: `${avatarPosition.x}% ${avatarPosition.y}%` 
+                    objectFit: 'cover'
                   }} 
                 />
               ) : (
