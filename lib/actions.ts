@@ -940,7 +940,7 @@ export async function getProfileData(idOrHandle: string) {
   const [posts, followCounts, followStatus, blockStatus, requestStatus] = await Promise.all([
     db.query.posts.findMany({
       where: eq(schema.posts.authorId, targetUserId),
-      orderBy: (posts, { desc }) => [desc(posts.createdAt)],
+      orderBy: (posts, { desc }) => [desc(posts.publishedAt)],
     }),
     getFollowCounts(targetUserId),
     currentUserId ? getFollowStatus(targetUserId) : Promise.resolve({ following: false }),
