@@ -9,7 +9,48 @@
    DESIGN TOKENS – LIGHT MODE
 ───────────────────────────────────────── */
 
+/* ─── NATIVE MOBILE OVERRIDES (Capacitor) ─── */
 :root {
+  --safe-area-inset-top: env(safe-area-inset-top);
+  --safe-area-inset-bottom: env(safe-area-inset-bottom);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  /* user-select: none; */ /* Keep enabled for text content, disable for UI specifically below */
+}
+
+input, textarea, [contenteditable="true"] {
+  user-select: text !important;
+}
+
+html, body {
+  /* Prevent bounce effect on mobile */
+  overscroll-behavior-y: none;
+  position: fixed;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+#main-content {
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-top: var(--safe-area-inset-top);
+  padding-bottom: var(--safe-area-inset-bottom);
+}
+
+/* Hide scrollbars for a cleaner native look */
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─────────────────────────────────────────── */
+
+:root {
+
   --primary: #2563EB;
   --primary-rgb: 37, 99, 235;
   --primary-light: #DBEAFE;

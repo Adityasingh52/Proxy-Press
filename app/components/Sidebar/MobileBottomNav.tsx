@@ -85,7 +85,10 @@ export default function MobileBottomNav() {
     <nav className="mobile-bottom-nav">
       <div className="mobile-nav-container">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          const isActive = item.href === '/' 
+            ? pathname === '/' 
+            : pathname.startsWith(item.href);
+
           const badge = item.href === '/messages' ? unreadCount : 0;
           
           if (item.isCreate) {

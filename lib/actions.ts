@@ -125,6 +125,10 @@ cloudinary.config({
  * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    throw new Error('Cloudinary environment variables are missing. Please check your Vercel settings.');
+  }
+
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
   
@@ -920,6 +924,40 @@ export async function getUserProfile(idOrHandle: string) {
   }
 
   return JSON.parse(JSON.stringify(user));
+}
+
+export async function getProfileData(idOrHandle: string) {
+  const cookieStore = await cookies();
+  const currentUserId = cookieStore.get('proxypress_session')?.value;
+
+  // 1. Fetch user profile
+  const user = await getUserProfile(idOrHandle);
+  if (!user) return null;
+
+  const targetUserId = user.id;
+
+  // 2. Fetch all related data in parallel
+  const [posts, followCounts, followStatus, blockStatus, requestStatus] = await Promise.all([
+    db.query.posts.findMany({
+      where: eq(schema.posts.authorId, targetUserId),
+      orderBy: (posts, { desc }) => [desc(posts.createdAt)],
+    }),
+    getFollowCounts(targetUserId),
+    currentUserId ? getFollowStatus(targetUserId) : Promise.resolve({ following: false }),
+    currentUserId ? getBlockStatus(targetUserId) : Promise.resolve({ blocked: false, muted: false }),
+    currentUserId ? getFollowRequestStatus(targetUserId) : Promise.resolve({ requested: false }),
+  ]);
+
+  return JSON.parse(JSON.stringify({
+    user,
+    posts,
+    followCounts,
+    isFollowing: followStatus.following,
+    isBlocked: blockStatus.blocked,
+    isMuted: blockStatus.muted,
+    isRequested: requestStatus.requested,
+    currentUserId,
+  }));
 }
 
 // ─── Safety Features ───

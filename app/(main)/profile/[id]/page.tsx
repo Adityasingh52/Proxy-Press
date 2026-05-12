@@ -4,7 +4,7 @@ import { useState, useEffect, use, useRef } from 'react';
 import { posts as mockPosts, currentUser as mockUser } from '@/lib/data';
 import '../profile.css';
 import Link from 'next/link';
-import { getInitialData, getCurrentUser, getUserProfile, blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus } from '@/lib/actions';
+import { getInitialData, getCurrentUser, getUserProfile, blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -100,76 +100,42 @@ export default function ProfilePage({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     async function loadProfileData() {
       try {
-        const currentUserData = await getCurrentUser();
-        const [targetUserData, data] = await Promise.all([
-          getUserProfile(id),
-          getInitialData(currentUserData?.id),
-        ]);
+        const fullData = await getProfileData(id);
 
-        if (currentUserData) {
-          setCurrentUserId(currentUserData.id);
-        }
-
-        if (targetUserData) {
-          const targetUserId = targetUserData.id;
-          const currentUserId = currentUserData?.id;
+        if (fullData) {
+          const { user: targetUserData, posts, followCounts, isFollowing: following, isBlocked: blocked, isMuted: muted, isRequested: requested, currentUserId: myId } = fullData;
           
-          const meFlag = targetUserId === currentUserId;
+          setCurrentUserId(myId);
+          const targetUserId = targetUserData.id;
+          const meFlag = targetUserId === myId;
           setIsMe(meFlag);
           
-          // Calculate status
+          // Activity status logic
           let statusDisplay = null;
           if (targetUserData.showActivityStatus && !meFlag) {
             if (targetUserData.lastSeen) {
               const lastSeenDate = new Date(targetUserData.lastSeen);
-              const now = new Date();
-              const diffMs = now.getTime() - lastSeenDate.getTime();
-              const diffMin = Math.floor(diffMs / 60000);
-
-              if (diffMin < 5) {
-                statusDisplay = 'Active Now';
-              }
+              const diffMin = Math.floor((new Date().getTime() - lastSeenDate.getTime()) / 60000);
+              if (diffMin < 5) statusDisplay = 'Active Now';
             }
           }
 
           setUser({
             ...targetUserData,
-            postsCount: targetUserData.postsCount || (data?.posts?.filter((p: any) => p.authorId === targetUserId).length || 0),
+            postsCount: posts.length,
             statusDisplay,
           });
 
-          if (data) {
-            const myPosts = data.posts.filter((p: any) => p.authorId === targetUserId);
-            setUserPosts(myPosts);
+          setUserPosts(posts);
+          setIsBlocked(blocked);
+          setIsMuted(muted);
+          setIsFollowing(following);
+          setIsRequested(requested);
+          setFollowersCount(followCounts.followers);
+          setFollowingCount(followCounts.following);
 
-            if (targetUserId === currentUserId) {
-              const savedFromDB = data.posts.filter((p: any) =>
-                Array.isArray(p.savedList) && p.savedList.some((s: any) => s.userId === currentUserId)
-              );
-              setSavedPosts(savedFromDB);
-            }
-          }
-
-          // Load block/mute status and follow info for other users
-          if (!meFlag) {
-            const [safetyStatus, followStatus, followCounts, requestStatus] = await Promise.all([
-              getBlockStatus(targetUserId),
-              getFollowStatus(targetUserId),
-              getFollowCounts(targetUserId),
-              getFollowRequestStatus(targetUserId)
-            ]);
-            setIsBlocked(safetyStatus.blocked);
-            setIsMuted(safetyStatus.muted);
-            setIsFollowing(followStatus.following);
-            setIsRequested(requestStatus.requested);
-            setFollowersCount(followCounts.followers);
-            setFollowingCount(followCounts.following);
-          } else {
-            // For self, just load counts
-            const followCounts = await getFollowCounts(targetUserId);
-            setFollowersCount(followCounts.followers);
-            setFollowingCount(followCounts.following);
-          }
+          // If it's me, we'd still need to load saved posts if we want that tab
+          // But let's keep it simple for now or fetch it only when switching tabs
         }
       } catch (err) {
         console.error('Failed to load profile data:', err);
