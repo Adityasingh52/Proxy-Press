@@ -214,8 +214,11 @@ export async function createPost(data: {
     console.error('Failed to create new post notifications:', err);
   }
 
-  // Invalidate Public Cache
-  await redis.del('public_initial_data').catch(() => null);
+  // Invalidate Public Cache and User Profile Cache
+  await Promise.all([
+    redis.del('public_initial_data').catch(() => null),
+    redis.del(`user_profile_data:${data.authorId}`).catch(() => null)
+  ]);
 
   return { success: true, id };
 }
@@ -866,6 +869,9 @@ export async function completeOnboarding(data: {
     maxAge: 60 * 60 * 24 * 7,
   });
 
+  // Invalidate User Profile Cache
+  await redis.del(`user_profile_data:${userId}`).catch(() => null);
+
   revalidatePath('/');
   revalidatePath('/profile');
   return { success: true };
@@ -934,6 +940,17 @@ export async function getProfileData(idOrHandle: string) {
   const cookieStore = await cookies();
   const currentUserId = cookieStore.get('proxypress_session')?.value;
 
+  // Optimization: Use Redis for the user's own profile (sub-millisecond speed)
+  const isSelf = currentUserId && (idOrHandle === currentUserId || idOrHandle === `@${currentUserId}`);
+  if (isSelf) {
+    try {
+      const cached = await redis.get(`user_profile_data:${currentUserId}`);
+      if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+    } catch (e) {
+      console.error('Redis profile fetch error:', e);
+    }
+  }
+
   // 1. Fetch user profile
   const user = await getUserProfile(idOrHandle);
   if (!user) return null;
@@ -952,7 +969,7 @@ export async function getProfileData(idOrHandle: string) {
     currentUserId ? getFollowRequestStatus(targetUserId) : Promise.resolve({ requested: false }),
   ]);
 
-  return JSON.parse(JSON.stringify({
+  const profileData = {
     user,
     posts,
     followCounts,
@@ -961,7 +978,18 @@ export async function getProfileData(idOrHandle: string) {
     isMuted: blockStatus.muted,
     isRequested: requestStatus.requested,
     currentUserId,
-  }));
+  };
+
+  // Cache in Redis for self-profile
+  if (isSelf) {
+    try {
+      await redis.set(`user_profile_data:${currentUserId}`, JSON.stringify(profileData), { ex: 300 });
+    } catch (e) {
+      console.error('Redis profile save error:', e);
+    }
+  }
+
+  return JSON.parse(JSON.stringify(profileData));
 }
 
 // ─── Safety Features ───
