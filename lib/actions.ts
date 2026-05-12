@@ -166,7 +166,7 @@ export async function createPost(data: {
   // Create Notifications for followers
   try {
     const followers = await getFollowers(data.authorId);
-    const notificationsToInsert = followers.map(follower => {
+    const notificationsToInsert = followers.map((follower: any) => {
       if (follower.notifyNewPosts) {
         return {
           id: `ntf${Date.now()}-${follower.id}`,
