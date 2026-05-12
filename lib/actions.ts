@@ -66,7 +66,7 @@ export async function getPostDetail(slug: string) {
   const currentUserId = cookieStore.get('proxypress_session')?.value;
   
   let canComment = true;
-  const privacy = post.author?.commentPrivacy || 'Everyone';
+  const privacy = (post as any).author?.commentPrivacy || 'Everyone';
 
   if (privacy === 'No One') {
     canComment = false;
@@ -77,8 +77,8 @@ export async function getPostDetail(slug: string) {
       // Check if author follows current user
       const follow = await db.query.follows.findFirst({
         where: and(
-          eq(schema.follows.followerId, post.authorId),
-          eq(schema.follows.followingId, currentUserId)
+          eq(schema.follows.followerId, post.authorId as string),
+          eq(schema.follows.followingId, currentUserId as string)
         )
       });
       if (!follow) canComment = false;
@@ -198,6 +198,7 @@ export async function sendMessage(data: {
   text: string; 
   type: string;
   attachment?: string;
+  replyTo?: string;
 }) {
   const messageId = `m${Date.now()}`;
   let finalConversationId = data.conversationId;

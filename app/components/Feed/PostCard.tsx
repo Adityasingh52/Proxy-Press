@@ -155,7 +155,7 @@ export default function PostCard({ post, index = 0, variant = 'compact' }: PostC
       <div className="menu-item" onClick={() => { navigator.clipboard?.writeText(window.location.origin + `/article/${post.slug}`); setMenuOpen(false); }}>
         <span>🔗</span> Copy link
       </div>
-      <Link href={`/profile/${post.authorId || post.author.id}`} className="menu-item" style={{ textDecoration: 'none' }} onClick={() => setMenuOpen(false)}>
+      <Link href={`/profile/${post.author.id}`} className="menu-item" style={{ textDecoration: 'none' }} onClick={() => setMenuOpen(false)}>
         <span>👤</span> View Profile
       </Link>
       <div className="menu-item danger" onClick={() => { setMenuOpen(false); setShowReportModal(true); }}>
@@ -275,7 +275,7 @@ export default function PostCard({ post, index = 0, variant = 'compact' }: PostC
 
           {/* Bottom row: source + actions */}
           <div className="news-item-bottom">
-            <Link href={`/profile/${post.authorId || post.author.id}`} className="news-item-source" style={{ textDecoration: 'none' }}>
+            <Link href={`/profile/${post.author.id}`} className="news-item-source" style={{ textDecoration: 'none' }}>
               <div className="news-item-source-avatar">
                 <img src={avatarSrc} alt={post.author.name} />
               </div>
