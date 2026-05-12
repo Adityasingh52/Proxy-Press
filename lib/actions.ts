@@ -45,10 +45,17 @@ export async function getInitialData(userId?: string) {
 }
 
 export async function getStories(userId?: string) {
-  const allStories = await queries.getStories(userId);
-  // Filter out any story groupings that have 0 slides (e.g. all expired)
-  const validStories = allStories.filter((s: any) => s.slides && s.slides.length > 0);
-  return JSON.parse(JSON.stringify(validStories));
+  const fetcher = async () => {
+    const allStories = await queries.getStories(userId);
+    // Filter out any story groupings that have 0 slides (e.g. all expired)
+    return allStories.filter((s: any) => s.slides && s.slides.length > 0);
+  };
+
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_stories', fetcher, 120); // 2 mins cache for stories
+
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function markStoryAsSeen(storyUserId: string) {
@@ -467,6 +474,9 @@ export async function createStory(data: {
     mediaUrl: data.mediaUrl,
     timestamp: 'Just now',
   });
+
+  // Invalidate Stories Cache
+  await redis.del('public_stories').catch(() => null);
 
   return { success: true, id: slideId };
 }
