@@ -14,10 +14,12 @@ export default function MobileHeader() {
   const isProfile = pathname.startsWith('/profile');
   const isCreate = pathname.startsWith('/create');
   const isExplore = pathname.startsWith('/explore');
+  const isArticle = pathname.startsWith('/article');
 
   const isSettings = pathname.startsWith('/settings');
+  const isAdmin = pathname.startsWith('/admin');
 
-  if (isProfile || isCreate || isExplore || isSettings) return null;
+  if (isProfile || isCreate || isExplore || isSettings || isAdmin || isArticle) return null;
 
   return (
     <header className="mobile-header">

@@ -1,0 +1,239 @@
+.reports-tabs {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding: 4px;
+  background: var(--surface-2);
+  border-radius: 16px;
+}
+
+.reports-tab {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.reports-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.reports-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.report-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-reason-tag {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.report-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.report-parties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.party {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.party-label {
+  color: var(--text-muted);
+  width: 80px;
+}
+
+.party-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.party-link:hover {
+  color: var(--primary);
+}
+
+.party-link.target {
+  color: #EF4444;
+}
+
+.reported-content {
+  background: var(--surface-2);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+
+.reported-post-brief {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.post-thumb-mini {
+  width: 50px;
+  height: 50px;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.post-text-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.post-title-link {
+  color: var(--text-primary);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.post-author-mini {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.report-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-remove-post {
+  background: rgba(239, 68, 68, 0.1);
+  color: #EF4444;
+  border: 1.5px solid rgba(239, 68, 68, 0.2);
+  padding: 8px 16px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-remove-post:hover {
+  background: #EF4444;
+  color: white;
+}
+
+.confirm-removal {
+  width: 100%;
+}
+
+.confirm-removal textarea {
+  width: 100%;
+  height: 80px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 14px;
+  resize: none;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+.confirm-btns {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.confirm-btns button {
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.confirm-btns button.danger {
+  background: #EF4444;
+  border: none;
+  color: white;
+}
+
+.empty-reports {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border-radius: 24px;
+  border: 1.5px dashed var(--border);
+}
+
+.reported-content-deleted {
+  text-align: center;
+  padding: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 13px;
+}
+
+.admin-loading, .admin-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 20px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

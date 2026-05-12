@@ -3,13 +3,26 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { logout, submitFeedback, getCurrentUser } from '@/lib/actions';
 import './settings.css';
 
 export default function SettingsPage() {
   const router = useRouter();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [feedbackType, setFeedbackType] = useState('Suggestion');
+  const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
+    async function loadUser() {
+      const u = await getCurrentUser();
+      setUser(u);
+    }
+    loadUser();
+
     const main = document.getElementById('main-content');
     if (main) {
       main.classList.add('no-top-padding');
@@ -17,8 +30,31 @@ export default function SettingsPage() {
     }
   }, []);
 
-  const handleLogout = () => {
-    router.push('/');
+  const handleLogout = async () => {
+    await logout();
+    router.push('/login');
+    router.refresh();
+  };
+
+  const handleFeedbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackMessage.trim()) return;
+    
+    setIsSubmitting(true);
+    try {
+      await submitFeedback({ type: feedbackType, message: feedbackMessage });
+      setShowSuccess(true);
+      setFeedbackMessage('');
+      setTimeout(() => {
+        setShowSuccess(false);
+        setShowFeedbackModal(false);
+      }, 2000);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit feedback. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const settingsItems = [
@@ -88,8 +124,18 @@ export default function SettingsPage() {
       ],
     },
     {
-      group: 'System',
+      group: 'Support',
       items: [
+        {
+          label: 'Feedback',
+          sub: 'Help us improve Proxy-Press',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          ),
+          onClick: () => setShowFeedbackModal(true),
+        },
         {
           label: 'Log Out',
           sub: 'Sign out of your account',
@@ -103,6 +149,22 @@ export default function SettingsPage() {
         },
       ],
     },
+    ...(user?.role === 'admin' ? [{
+      group: 'Administration',
+      items: [
+        {
+          label: 'Admin Portal',
+          sub: 'Manage feedback and users',
+          icon: (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="M12 8v4M12 16h.01"/>
+            </svg>
+          ),
+          href: '/admin',
+        }
+      ]
+    }] : []),
   ];
 
   return (
@@ -183,6 +245,78 @@ export default function SettingsPage() {
               <button className="logout-cancel-btn" onClick={() => setShowLogoutModal(false)}>Cancel</button>
               <button className="logout-confirm-btn" onClick={handleLogout}>Log Out</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showFeedbackModal && (
+        <div className="feedback-overlay" onClick={() => !isSubmitting && setShowFeedbackModal(false)}>
+          <div className="feedback-modal" onClick={e => e.stopPropagation()}>
+            {showSuccess ? (
+              <div className="feedback-success-state">
+                <div className="success-icon-ring">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </div>
+                <h2 className="feedback-modal-title">Thank You!</h2>
+                <p className="feedback-modal-desc">Your feedback helps us make Proxy-Press better for everyone.</p>
+              </div>
+            ) : (
+              <form onSubmit={handleFeedbackSubmit}>
+                <div className="feedback-modal-header">
+                  <div className="feedback-modal-icon-bg">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </div>
+                  <h2 className="feedback-modal-title">Share Feedback</h2>
+                  <p className="feedback-modal-desc">Have a suggestion or found a bug? Let us know!</p>
+                </div>
+
+                <div className="feedback-form-content">
+                  <div className="feedback-type-selector">
+                    {['Suggestion', 'Bug', 'Other'].map(type => (
+                      <button
+                        key={type}
+                        type="button"
+                        className={`feedback-type-btn ${feedbackType === type ? 'active' : ''}`}
+                        onClick={() => setFeedbackType(type)}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
+
+                  <textarea
+                    className="feedback-textarea"
+                    placeholder="Tell us what's on your mind..."
+                    value={feedbackMessage}
+                    onChange={e => setFeedbackMessage(e.target.value)}
+                    required
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <div className="feedback-modal-actions">
+                  <button 
+                    type="button" 
+                    className="feedback-cancel-btn" 
+                    onClick={() => setShowFeedbackModal(false)}
+                    disabled={isSubmitting}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="feedback-submit-btn"
+                    disabled={isSubmitting || !feedbackMessage.trim()}
+                  >
+                    {isSubmitting ? 'Sending...' : 'Send Feedback'}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

@@ -5,12 +5,33 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import MobileBottomNav from '@/app/components/Sidebar/MobileBottomNav';
 import './messages.css';
+import { 
+  getConversations, 
+  sendMessage as dbSendMessage, 
+  uploadMedia, 
+  createStory, 
+  getStories, 
+  getCurrentUser, 
+  getUserProfile, 
+  markMessagesAsSeen, 
+  updateConversationVanishMode,
+  blockUser as dbBlockUser,
+  unblockUser as dbUnblockUser,
+  searchUsersInMessaging,
+  getBlockStatus,
+  markStoryAsSeen,
+  updateConversationMute,
+  deleteConversation as dbDeleteConversation,
+  editMessage,
+  deleteMessage as dbDeleteMessage
+} from '@/lib/actions';
 
 /* ─────────── TYPES ─────────── */
 interface User {
   id: string;
   name: string;
   avatar: string;
+  profilePicture?: string;
   online: boolean;
   lastSeen?: string;
 }
@@ -26,6 +47,9 @@ interface Message {
   reactions?: string[];
   status?: 'sending' | 'sent' | 'error';
   attachment?: string;
+  expiresAt?: number;
+  isEdited?: boolean;
+  isDeleted?: boolean;
 }
 
 interface StorySlide {
@@ -43,6 +67,7 @@ interface UserStory {
   userId: string;
   userName: string;
   userAvatar: string;
+  userProfilePicture?: string;
   slides: StorySlide[];
   seen: boolean;
 }
@@ -50,133 +75,72 @@ interface UserStory {
 interface Conversation {
   id: string;
   user: User;
-  lastMessage: string;
   lastMessageTime: string;
+  rawLastMessageTime?: string;
   unreadCount: number;
   isTyping: boolean;
   messages: Message[];
   muted: boolean;
   vanishMode: boolean;
+  vanishDuration: number;
 }
 
 /* ─────────── MOCK DATA ─────────── */
 const CURRENT_USER_ID = 'me';
 
-const MOCK_CONVERSATIONS: Conversation[] = [
-  {
-    id: '1',
-    user: { id: 'u1', name: 'Arjun Mehta', avatar: 'AM', online: true },
-    lastMessage: 'Did you see the new campus event? 🎉',
-    lastMessageTime: '2m',
-    unreadCount: 3,
-    isTyping: false,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u1', text: 'Hey! How are you doing?', timestamp: '10:30 AM', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'I\'m great! Just finished my assignment 📝', timestamp: '10:32 AM', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u1', text: 'Nice! Wanna grab lunch later?', timestamp: '10:33 AM', seen: true, type: 'text' },
-      { id: 'm4', senderId: CURRENT_USER_ID, text: 'Sure, where do you wanna go?', timestamp: '10:35 AM', seen: true, type: 'text' },
-      { id: 'm5', senderId: 'u1', text: 'Let\'s try the new café near the library ☕', timestamp: '10:36 AM', seen: true, type: 'text' },
-      { id: 'm6', senderId: CURRENT_USER_ID, text: 'Sounds perfect! See you at 1?', timestamp: '10:38 AM', seen: true, type: 'text' },
-      { id: 'm7', senderId: 'u1', text: '👍 Done!', timestamp: '10:39 AM', seen: true, type: 'text' },
-      { id: 'm8', senderId: 'u1', text: 'Did you see the new campus event? 🎉', timestamp: '11:02 AM', seen: false, type: 'text' },
-    ],
-  },
-  {
-    id: '2',
-    user: { id: 'u2', name: 'Priya Sharma', avatar: 'PS', online: true },
-    lastMessage: 'Sent a photo',
-    lastMessageTime: '15m',
-    unreadCount: 1,
-    isTyping: true,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u2', text: 'Check out this sunset from the rooftop! 🌅', timestamp: '9:15 AM', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'Wow that\'s beautiful!', timestamp: '9:20 AM', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u2', text: 'Right? We should go there together sometime', timestamp: '9:21 AM', seen: true, type: 'text' },
-      { id: 'm4', senderId: CURRENT_USER_ID, text: 'Definitely! Maybe this weekend?', timestamp: '9:25 AM', seen: true, type: 'text' },
-      { id: 'm5', senderId: 'u2', text: 'Sent a photo', timestamp: '9:30 AM', seen: false, type: 'image' },
-    ],
-  },
-  {
-    id: '3',
-    user: { id: 'u3', name: 'Rahul Verma', avatar: 'RV', online: false, lastSeen: '1h ago' },
-    lastMessage: 'Sure, I\'ll send you the notes tonight',
-    lastMessageTime: '1h',
-    unreadCount: 0,
-    isTyping: false,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: CURRENT_USER_ID, text: 'Hey Rahul, can you share the Physics notes?', timestamp: '8:00 AM', seen: true, type: 'text' },
-      { id: 'm2', senderId: 'u3', text: 'Sure, I\'ll send you the notes tonight', timestamp: '8:05 AM', seen: true, type: 'text' },
-    ],
-  },
-  {
-    id: '4',
-    user: { id: 'u4', name: 'Sneha Patel', avatar: 'SP', online: true },
-    lastMessage: 'The hackathon was amazing! 🚀',
-    lastMessageTime: '3h',
-    unreadCount: 0,
-    isTyping: false,
-    muted: true,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u4', text: 'Did you register for the hackathon?', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'Yes! Our team is ready 💪', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u4', text: 'The hackathon was amazing! 🚀', timestamp: '6:00 AM', seen: true, type: 'text' },
-    ],
-  },
-  {
-    id: '5',
-    user: { id: 'u5', name: 'Karan Singh', avatar: 'KS', online: false, lastSeen: '3h ago' },
-    lastMessage: 'Thanks for the help!',
-    lastMessageTime: '5h',
-    unreadCount: 0,
-    isTyping: false,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u5', text: 'Can you help me with the project?', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'Of course! What do you need?', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u5', text: 'I need help with the database schema', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm4', senderId: CURRENT_USER_ID, text: 'I\'ll review it and send feedback', timestamp: 'Yesterday', seen: true, type: 'text' },
-      { id: 'm5', senderId: 'u5', text: 'Thanks for the help!', timestamp: '4:00 AM', seen: true, type: 'text' },
-    ],
-  },
-  {
-    id: '6',
-    user: { id: 'u6', name: 'Ananya Gupta', avatar: 'AG', online: true },
-    lastMessage: 'See you at the meetup! 👋',
-    lastMessageTime: '1d',
-    unreadCount: 0,
-    isTyping: false,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u6', text: 'Are you going to the tech meetup?', timestamp: 'Mon', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'Wouldn\'t miss it!', timestamp: 'Mon', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u6', text: 'See you at the meetup! 👋', timestamp: 'Mon', seen: true, type: 'text' },
-    ],
-  },
-  {
-    id: '7',
-    user: { id: 'u7', name: 'Vikram Joshi', avatar: 'VJ', online: false, lastSeen: 'Yesterday' },
-    lastMessage: 'Let me know when you\'re free',
-    lastMessageTime: '2d',
-    unreadCount: 0,
-    isTyping: false,
-    muted: false,
-    vanishMode: false,
-    messages: [
-      { id: 'm1', senderId: 'u7', text: 'Hey, wanna practice for the interview?', timestamp: 'Sun', seen: true, type: 'text' },
-      { id: 'm2', senderId: CURRENT_USER_ID, text: 'Good idea! Let me check my schedule', timestamp: 'Sun', seen: true, type: 'text' },
-      { id: 'm3', senderId: 'u7', text: 'Let me know when you\'re free', timestamp: 'Sun', seen: true, type: 'text' },
-    ],
-  },
-];
+function formatMessageTime(timestamp: string) {
+  if (!timestamp) return '';
+  if (timestamp === 'Just now') return 'Just now';
+  
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return timestamp;
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    // Less than 1 hour - min
+    if (diffMs < 3600000) {
+      const mins = Math.floor(diffMs / 60000);
+      return mins <= 0 ? 'Just now' : `${mins}m`;
+    }
+
+    // Less than 1 day - hour (only if same calendar day)
+    if (date.toDateString() === now.toDateString()) {
+      const hours = Math.floor(diffMs / 3600000);
+      return hours <= 0 ? '1m' : `${hours}h`;
+    }
+
+    // Yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+
+    // Within last 7 days
+    if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: 'short' });
+    }
+    
+    // 7 to 30 days - "X days"
+    if (diffDays < 31) {
+      return `${diffDays} days`;
+    }
+
+    // Older than a month - Full date
+    return date.toLocaleDateString([], { 
+      day: 'numeric', 
+      month: 'short', 
+      year: now.getFullYear() !== date.getFullYear() ? 'numeric' : undefined 
+    });
+  } catch (e) {
+    return timestamp;
+  }
+}
+
+const MOCK_CONVERSATIONS: Conversation[] = [];
 
 const EMOJI_LIST = ['😀', '😂', '❤️', '🔥', '👍', '😍', '🎉', '💯', '🙌', '✨', '😎', '🤔', '👀', '💪', '🚀', '⭐', '🌟', '💫', '🎊', '🥳', '😊', '🤗', '💕', '🙏'];
 
@@ -191,49 +155,7 @@ const STORY_GRADIENTS = [
   'linear-gradient(135deg, #ff9a9e, #fecfef)',
 ];
 
-const MOCK_STORIES: UserStory[] = [
-  {
-    userId: 'u1',
-    userName: 'Arjun Mehta',
-    userAvatar: 'AM',
-    seen: false,
-    slides: [
-      { id: 's1-1', type: 'text', text: 'Just aced my DSA exam!', emoji: '🎯', caption: '3 hours of grinding paid off', gradient: STORY_GRADIENTS[0], timestamp: '2h ago' },
-      { id: 's1-2', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=600&h=900&fit=crop', caption: 'Campus sunset hits different 🌅', gradient: STORY_GRADIENTS[1], timestamp: '1h ago' },
-    ],
-  },
-  {
-    userId: 'u2',
-    userName: 'Priya Sharma',
-    userAvatar: 'PS',
-    seen: false,
-    slides: [
-      { id: 's2-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=900&fit=crop', caption: 'New semester, new goals ✨', gradient: STORY_GRADIENTS[2], timestamp: '4h ago' },
-      { id: 's2-2', type: 'text', text: 'Café study sessions > library', emoji: '☕', gradient: STORY_GRADIENTS[3], timestamp: '3h ago' },
-      { id: 's2-3', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=600&h=900&fit=crop', caption: 'Weekend plans anyone? 🎉', gradient: STORY_GRADIENTS[4], timestamp: '30m ago' },
-    ],
-  },
-  {
-    userId: 'u4',
-    userName: 'Sneha Patel',
-    userAvatar: 'SP',
-    seen: false,
-    slides: [
-      { id: 's4-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=600&h=900&fit=crop', caption: 'Hackathon winning team! 🏆', gradient: STORY_GRADIENTS[5], timestamp: '6h ago' },
-      { id: 's4-2', type: 'text', text: '48 hours well spent', emoji: '🚀', caption: 'Sleep is overrated 😅', gradient: STORY_GRADIENTS[0], timestamp: '5h ago' },
-    ],
-  },
-  {
-    userId: 'u6',
-    userName: 'Ananya Gupta',
-    userAvatar: 'AG',
-    seen: false,
-    slides: [
-      { id: 's6-1', type: 'image', mediaUrl: 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=600&h=900&fit=crop', caption: 'Tech meetup was insane! 💡', gradient: STORY_GRADIENTS[6], timestamp: '5h ago' },
-      { id: 's6-2', type: 'text', text: 'Learning Rust 🦀', emoji: '💻', gradient: STORY_GRADIENTS[7], timestamp: '2h ago' },
-    ],
-  },
-];
+const MOCK_STORIES: UserStory[] = [];
 
 const STORY_DURATION = 5000; // 5 seconds per slide
 
@@ -241,9 +163,231 @@ const STORY_DURATION = 5000; // 5 seconds per slide
 function MessagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [conversations, setConversations] = useState<Conversation[]>(MOCK_CONVERSATIONS);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [dbConversations, setDbConversations] = useState<any[]>([]);
   const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string>('me');
+  const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
+
+  useEffect(() => {
+    async function loadInitialData() {
+      try {
+        const currentUser = await getCurrentUser();
+        const myId = currentUser?.id || 'me';
+        setCurrentUserId(myId);
+        setCurrentUserProfilePic(currentUser?.profilePicture);
+
+        const targetUserId = searchParams.get('userId');
+        const [convs, dbStories] = await Promise.all([
+          getConversations(myId),
+          getStories(myId)
+        ]);
+        
+        let mappedConvs: Conversation[] = [];
+        if (convs && convs.length > 0) {
+          console.log('Loaded conversations from DB:', convs);
+          
+          mappedConvs = convs.map((dbConv: any) => {
+            const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== myId);
+            const otherUser = otherParticipant?.user;
+            
+            // Safety: if name looks like a URL/path, use a fallback
+            const displayName = (otherUser?.name && otherUser.name.includes('/uploads/')) 
+              ? (otherUser.username || 'User') 
+              : (otherUser?.name || 'Unknown User');
+
+            return {
+              id: dbConv.id,
+              user: {
+                id: otherUser?.id || 'unknown',
+                name: displayName,
+                avatar: otherUser?.avatar || (displayName ? displayName.substring(0, 1) : 'U'),
+                profilePicture: otherUser?.profilePicture,
+                online: true,
+              },
+
+              lastMessage: dbConv.lastMessage || '',
+              lastMessageTime: formatMessageTime(dbConv.lastMessageTime) || '',
+              rawLastMessageTime: dbConv.lastMessageTime || '',
+              unreadCount: dbConv.unreadCount || 0,
+              isTyping: false,
+              muted: dbConv.muted || false,
+              vanishMode: dbConv.vanishMode || false,
+              vanishDuration: dbConv.vanishDuration || 3600,
+              messages: (dbConv.messages || []).map((m: any) => ({
+                id: m.id,
+                senderId: m.senderId === myId ? 'me' : m.senderId,
+                text: m.text,
+                timestamp: formatMessageTime(m.timestamp),
+                seen: m.seen,
+                type: m.type || 'text',
+                attachment: m.attachment,
+                expiresAt: m.expiresAt,
+                isEdited: m.isEdited,
+                isDeleted: m.isDeleted,
+                replyTo: m.replyTo,
+              })).reverse(), // DB returns desc, UI might want asc for chat history
+            };
+          });
+
+          setConversations(mappedConvs);
+        }
+
+        if (targetUserId) {
+           const existing = mappedConvs.find(c => c.user.id === targetUserId);
+           if (existing) {
+             setActiveChat(existing.id);
+           } else {
+             const targetUser = await getUserProfile(targetUserId);
+             if (targetUser) {
+               const newConv: Conversation = {
+                 id: `new_${targetUserId}`,
+                 user: {
+                   id: targetUser.id,
+                   name: targetUser.name,
+                   avatar: targetUser.profilePicture || '👤',
+                   profilePicture: targetUser.profilePicture,
+                   online: true,
+                 },
+                 lastMessage: '',
+                 lastMessageTime: '',
+                 unreadCount: 0,
+                 isTyping: false,
+                 muted: false,
+                 vanishMode: false,
+                 vanishDuration: 3600,
+                 messages: [],
+               };
+               setConversations(prev => {
+                   if (prev.find(c => c.id === newConv.id)) return prev;
+                   return [newConv, ...prev];
+               });
+               setActiveChat(newConv.id);
+             }
+           }
+        } else {
+            const chatId = searchParams.get('chatId');
+            if (chatId) {
+                setActiveChat(chatId);
+            }
+        }
+
+        if (dbStories && dbStories.length > 0) {
+          // Find current user's stories
+          const myDbStory = dbStories.find((s: any) => s.userId === myId);
+          if (myDbStory && myDbStory.slides && myDbStory.slides.length > 0) {
+            setMyStories(myDbStory.slides.map((s: any) => ({
+              ...s,
+              type: s.type || 'image',
+              timestamp: s.timestamp || 'Just now'
+            })));
+          } else {
+            setMyStories([]);
+          }
+
+          // Map other stories to UI format, filtering out those with no slides
+          const otherStories = dbStories
+            .filter((s: any) => s.userId !== myId && s.slides && s.slides.length > 0)
+            .map((s: any) => ({
+              userId: s.userId,
+              userName: s.user?.name || 'User',
+              userAvatar: (s.user?.name || 'U').substring(0, 1),
+              userProfilePicture: s.user?.profilePicture,
+              seen: s.seen,
+              slides: s.slides.map((sl: any) => ({
+                ...sl,
+                type: sl.type || 'image',
+                timestamp: sl.timestamp || 'Just now'
+              }))
+            }));
+          
+          setStories(otherStories);
+        } else {
+           setStories([]);
+           setMyStories([]);
+        }
+      } catch (err) {
+        console.error('Failed to load initial messages data:', err);
+      }
+    }
+    loadInitialData();
+  }, []);
+
+  // Polling for real-time conversation and message updates
+  useEffect(() => {
+    if (!currentUserId || currentUserId === 'me') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const convs = await getConversations(currentUserId);
+        if (convs && convs.length > 0) {
+          setConversations(prev => {
+            // Preservation logic: maintain local state for messages being sent
+            const localMsgMap = new Map();
+            prev.forEach(c => c.messages.forEach(m => {
+              if (String(m.id).startsWith('m')) localMsgMap.set(m.id, m);
+            }));
+
+            const newMappedConvs = convs.map((dbConv: any) => {
+              const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== currentUserId);
+              const otherUser = otherParticipant?.user;
+              
+              const displayName = (otherUser?.name && otherUser.name.includes('/uploads/')) 
+                ? (otherUser.username || 'User') 
+                : (otherUser?.name || 'Unknown User');
+
+              return {
+                id: dbConv.id,
+                user: {
+                  id: otherUser?.id || 'unknown',
+                  name: displayName,
+                  avatar: otherUser?.avatar || (displayName ? displayName.substring(0, 1) : 'U'),
+                  profilePicture: otherUser?.profilePicture,
+                  online: true, // Simplified for now
+                },
+
+                lastMessage: dbConv.lastMessage || '',
+                lastMessageTime: formatMessageTime(dbConv.lastMessageTime) || '',
+                rawLastMessageTime: dbConv.lastMessageTime || '', // Store raw for sorting
+                unreadCount: dbConv.unreadCount || 0,
+                isTyping: false,
+                muted: dbConv.muted || false,
+                vanishMode: dbConv.vanishMode || false,
+                vanishDuration: dbConv.vanishDuration || 3600,
+                messages: (dbConv.messages || []).map((m: any) => {
+                  const localMsg = localMsgMap.get(m.id);
+                  return {
+                    id: m.id,
+                    senderId: m.senderId === currentUserId ? 'me' : m.senderId,
+                    text: m.text,
+                    timestamp: formatMessageTime(m.timestamp),
+                    seen: m.seen,
+                    type: m.type || 'text',
+                    attachment: m.attachment,
+                    status: localMsg?.status || 'sent',
+                    expiresAt: m.expiresAt ? new Date(m.expiresAt).getTime() : undefined,
+                    isEdited: m.isEdited,
+                    isDeleted: m.isDeleted,
+                    replyTo: m.replyTo,
+                  };
+                }).reverse(),
+              };
+            });
+
+            // Always update state if we have new data to ensure correct sorting and order
+            const newConvs = prev.filter(c => String(c.id).startsWith('new_'));
+            return [...newConvs, ...newMappedConvs];
+          });
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 10000); // 10 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [currentUserId]);
   const [messageInput, setMessageInput] = useState('');
+  const activeConversation = conversations.find(c => c.id === activeChat);
   const [searchQuery, setSearchQuery] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [showChatInfo, setShowChatInfo] = useState(false);
@@ -252,12 +396,28 @@ function MessagesContent() {
   const [longPressMsg, setLongPressMsg] = useState<string | null>(null);
   const [showFutureModal, setShowFutureModal] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMuteToast, setShowMuteToast] = useState(false);
   const [showVanishToast, setShowVanishToast] = useState(false);
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [lightboxMedia, setLightboxMedia] = useState<{ url: string; msgId: string; sender: string; time: string; type: 'image' | 'video' } | null>(null);
+
+  const [lightboxControlsVisible, setLightboxControlsVisible] = useState(true);
+  const [lightboxRotation, setLightboxRotation] = useState(0);
+  const [showLightboxMenu, setShowLightboxMenu] = useState(false);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const [showForwardSuccess, setShowForwardSuccess] = useState(false);
+
+
+
+
 
   /* ─── Story State ─── */
-  const [stories, setStories] = useState<UserStory[]>(MOCK_STORIES);
+  const [stories, setStories] = useState<UserStory[]>([]);
   const [myStories, setMyStories] = useState<StorySlide[]>([]);
   const [activeStoryUserIdx, setActiveStoryUserIdx] = useState<number | null>(null);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
@@ -286,25 +446,32 @@ function MessagesContent() {
   const [cameraCaptured, setCameraCaptured] = useState<string | null>(null);
   const [cameraCapturedType, setCameraCapturedType] = useState<'image' | 'video' | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement>(null);
+  const [cameraMode, setCameraMode] = useState<'photo' | 'video'>('photo');
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const cameraCanvasRef = useRef<HTMLCanvasElement>(null);
   const cameraRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lightboxRef = useRef<HTMLDivElement>(null);
+
+
 
   useEffect(() => {
-    const savedBlocked = localStorage.getItem('blockedUsers');
-    if (savedBlocked) {
-      try {
-        setBlockedUserIds(JSON.parse(savedBlocked));
-      } catch (e) {
-        console.error('Error parsing blocked users', e);
-      }
-    }
-  }, []);
+    const handleOrientation = () => {
+      if (!lightboxMedia) return;
+      // Auto-rotate logic for mobile
+      const isLandscape = window.innerWidth > window.innerHeight;
+      // If we're on mobile (roughly) and orientation changes, we can suggest or auto-adjust
+      // For now, let's just ensure we reset rotation on orientation change to allow native fit
+      setLightboxRotation(0);
+    };
+    window.addEventListener('resize', handleOrientation);
+    return () => window.removeEventListener('resize', handleOrientation);
+  }, [lightboxMedia]);
 
   useEffect(() => {
     if (showMuteToast) {
+
       const timer = setTimeout(() => setShowMuteToast(false), 3000);
       return () => clearTimeout(timer);
     }
@@ -317,43 +484,323 @@ function MessagesContent() {
     }
   }, [showVanishToast]);
 
-  const handleBlockUser = () => {
-    if (!activeConversation) return;
-    const userId = activeConversation.user.id;
-    if (blockedUserIds.includes(userId)) {
-      setShowBlockConfirm(false);
-      return;
-    }
-    const newBlocked = [...blockedUserIds, userId];
-    setBlockedUserIds(newBlocked);
-    localStorage.setItem('blockedUsers', JSON.stringify(newBlocked));
-    
-    // Store names for the settings page too (simulating a DB)
-    const savedNames = localStorage.getItem('blockedUserNames') || '{}';
-    const namesObj = JSON.parse(savedNames);
-    namesObj[userId] = activeConversation.user.name;
-    localStorage.setItem('blockedUserNames', JSON.stringify(namesObj));
+  const [searchResults, setSearchResults] = useState<any[]>([]);
 
-    setShowBlockConfirm(false);
-    setShowChatInfo(false);
-    // Optionally remove from active chat
-    // Optionally remove from active chat
-    setActiveChat(null);
+  useEffect(() => {
+    async function searchGlobal() {
+      if (searchQuery.trim().length > 1) {
+        const results = await searchUsersInMessaging(searchQuery);
+        // Filter out people I already have a conversation with
+        const existingUserIds = conversations.map(c => c.user.id);
+        setSearchResults(results.filter((u: any) => !existingUserIds.includes(u.id) && u.id !== currentUserId));
+      } else {
+        setSearchResults([]);
+      }
+    }
+    const timer = setTimeout(searchGlobal, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, conversations, currentUserId]);
+  
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [voiceRecordingDuration, setVoiceRecordingDuration] = useState(0);
+  const [recordingMediaRecorder, setRecordingMediaRecorder] = useState<MediaRecorder | null>(null);
+  const voiceRecordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  const cancelRef = useRef(false);
+
+  // Recording timer
+  useEffect(() => {
+    if (isVoiceRecording) {
+      voiceRecordingTimerRef.current = setInterval(() => {
+        setVoiceRecordingDuration(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (voiceRecordingTimerRef.current) clearInterval(voiceRecordingTimerRef.current);
+      setVoiceRecordingDuration(0);
+    }
+    return () => {
+      if (voiceRecordingTimerRef.current) clearInterval(voiceRecordingTimerRef.current);
+    };
+  }, [isVoiceRecording]);
+
+  const startVoiceRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = async () => {
+        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+        if (audioBlob.size > 0 && !cancelRef.current) {
+          await sendVoiceMessage(audioBlob);
+        }
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      setAudioChunks(chunks);
+      setRecordingMediaRecorder(recorder);
+      cancelRef.current = false;
+      recorder.start();
+      setIsVoiceRecording(true);
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      alert('Could not access microphone');
+    }
   };
 
-  const toggleVanishMode = () => {
-    if (!activeChat) return;
+  const stopVoiceRecording = (shouldSend: boolean) => {
+    if (recordingMediaRecorder && recordingMediaRecorder.state !== 'inactive') {
+      cancelRef.current = !shouldSend;
+      recordingMediaRecorder.stop();
+      setIsVoiceRecording(false);
+    }
+  };
+
+  const sendVoiceMessage = async (blob: Blob) => {
+    if (!activeChat || !currentUserId) return;
+
+    try {
+      // 1. Create FormData for true binary upload
+      const formData = new FormData();
+      const file = new File([blob], `voice-${Date.now()}.webm`, { type: 'audio/webm' });
+      formData.append('file', file);
+      formData.append('category', 'voice');
+
+      // 2. Upload using universal media action
+      const uploadRes = await uploadMedia(formData);
+      if (!uploadRes || !uploadRes.url) {
+        throw new Error('Upload failed');
+      }
+
+      const fileUrl = uploadRes.url;
+      const newMsgId = `v-${Date.now()}`;
+      const newMsg: Message = {
+        id: newMsgId,
+        senderId: currentUserId,
+        text: 'Voice message',
+        timestamp: 'Just now',
+        type: 'voice',
+        attachment: fileUrl,
+        status: 'sending'
+      };
+
+      // 3. Update local UI state
+      setConversations(prev => prev.map(c => 
+        c.id === activeChat ? { 
+          ...c, 
+          lastMessage: '🎤 Voice message', 
+          lastMessageTime: 'Just now',
+          rawLastMessageTime: new Date().toISOString(),
+          messages: [...c.messages, newMsg]
+        } : c
+      ));
+
+      // 4. Send message reference to DB
+      const res = await dbSendMessage({
+        conversationId: activeChat,
+        senderId: currentUserId,
+        text: 'Voice message',
+        type: 'voice',
+        attachment: fileUrl
+      });
+
+      if (res.success) {
+        setConversations(prev => prev.map(c => 
+          c.id === activeChat ? { 
+            ...c, 
+            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.messageId as string, status: 'sent' } : m)
+          } : c
+        ));
+      }
+    } catch (err) {
+      console.error('Error sending voice message:', err);
+      alert('Failed to send voice message');
+    }
+  };
+
+  const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const toggleVoicePlay = (msgId: string, attachment: string) => {
+    if (playingVoiceId === msgId) {
+      audioRef.current?.pause();
+      setPlayingVoiceId(null);
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      const audio = new Audio(attachment);
+      audio.onended = () => setPlayingVoiceId(null);
+      audio.play();
+      audioRef.current = audio;
+      setPlayingVoiceId(msgId);
+    }
+  };
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleEditMessage = (msg: Message) => {
+    setEditingMessageId(msg.id);
+    setEditingText(msg.text);
+    setLongPressMsg(null);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingMessageId || !activeChat) return;
+    const msgId = editingMessageId;
+    const newText = editingText.trim();
+    
+    // Optimistic update
     setConversations(prev => prev.map(c => 
-      c.id === activeChat ? { ...c, vanishMode: !c.vanishMode } : c
+      c.id === activeChat 
+        ? { ...c, messages: c.messages.map(m => m.id === msgId ? { ...m, text: newText, isEdited: true } : m) }
+        : c
+    ));
+    
+    setEditingMessageId(null);
+    setEditingText('');
+
+    try {
+      await editMessage(msgId, newText);
+    } catch (err) {
+      console.error('Failed to save edit:', err);
+    }
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!activeChat) return;
+    
+    // Optimistic update
+    setConversations(prev => prev.map(c => 
+      c.id === activeChat 
+        ? { ...c, messages: c.messages.map(m => m.id === msgId ? { ...m, isDeleted: true, text: 'This message was deleted', attachment: undefined } : m) }
+        : c
+    ));
+    setLongPressMsg(null);
+
+    try {
+      await dbDeleteMessage(msgId);
+    } catch (err) {
+      console.error('Failed to delete message:', err);
+    }
+  };
+
+  const handleBlockUser = async () => {
+    if (!activeConversation) return;
+    const targetId = activeConversation.user.id;
+    
+    try {
+      await dbBlockUser(targetId);
+      setConversations(prev => prev.filter(c => c.user.id !== targetId));
+      setShowBlockConfirm(false);
+      setShowChatInfo(false);
+      closeChat();
+    } catch (err) {
+      console.error('Failed to block user:', err);
+    }
+  };
+
+  const [showDeleteToast, setShowDeleteToast] = useState(false);
+
+  const handleDeleteChat = async () => {
+    if (!activeChat || activeChat.startsWith('new_')) {
+        setShowDeleteConfirm(false);
+        setShowChatInfo(false);
+        closeChat();
+        return;
+    }
+
+    const idToDelete = activeChat;
+    
+    // Optimistic UI update
+    setConversations(prev => prev.filter(c => c.id !== idToDelete));
+    setShowDeleteConfirm(false);
+    setShowChatInfo(false);
+    closeChat();
+    setShowDeleteToast(true);
+    setTimeout(() => setShowDeleteToast(false), 3000);
+
+    try {
+      await dbDeleteConversation(idToDelete);
+    } catch (err) {
+      console.error('Failed to delete chat:', err);
+    }
+  };
+
+
+  const closeChat = useCallback(() => {
+    if (activeConversation?.vanishMode) {
+      // CLEAR SEEN MESSAGES on close in vanish mode
+      setConversations(prev => prev.map(c => 
+        c.id === activeChat 
+          ? { ...c, messages: c.messages.filter(m => !m.seen && m.senderId !== 'me') } 
+          : c
+      ));
+    }
+    setActiveChat(null);
+  }, [activeChat, activeConversation?.vanishMode]);
+
+  const toggleVanishMode = async () => {
+    if (!activeChat || activeChat.startsWith('new_')) return;
+    
+    const currentConv = conversations.find(c => c.id === activeChat);
+    if (!currentConv) return;
+
+    const newVanishMode = !currentConv.vanishMode;
+    
+    setConversations(prev => prev.map(c => 
+      c.id === activeChat ? { ...c, vanishMode: newVanishMode } : c
     ));
     
     setShowVanishToast(true);
+
+    try {
+      await updateConversationVanishMode(activeChat, newVanishMode);
+    } catch (err) {
+      console.error('Failed to toggle vanish mode:', err);
+    }
+  };
+  
+  const toggleMute = async () => {
+    if (!activeChat || activeChat.startsWith('new_')) return;
     
-    // If turning on, we might want to show a toast or something
-    const isNowOn = !activeConversation?.vanishMode;
-    if (isNowOn) {
-      // Logic for Instagram-like behavior (clear messages when closing chat)
-      // For now we'll just toggle the UI
+    const currentConv = conversations.find(c => c.id === activeChat);
+    if (!currentConv) return;
+
+    const newMuted = !currentConv.muted;
+    
+    setConversations(prev => prev.map(c => 
+      c.id === activeChat ? { ...c, muted: newMuted } : c
+    ));
+    
+    setShowMuteToast(true);
+
+    try {
+      await updateConversationMute(activeChat, newMuted);
+    } catch (err) {
+      console.error('Failed to toggle mute:', err);
+    }
+  };
+
+  const handleVanishDurationChange = async (duration: number) => {
+    if (!activeChat || activeChat.startsWith('new_')) return;
+
+    setConversations(prev => prev.map(c => 
+      c.id === activeChat ? { ...c, vanishDuration: duration } : c
+    ));
+
+    try {
+      await updateConversationVanishMode(activeChat, true, duration);
+    } catch (err) {
+      console.error('Failed to update vanish duration:', err);
     }
   };
   
@@ -369,7 +816,14 @@ function MessagesContent() {
   const allViewableStories = useCallback(() => {
     const result: UserStory[] = [];
     if (myStories.length > 0) {
-      result.push({ userId: 'me', userName: 'Your Story', userAvatar: '✦', slides: myStories, seen: true });
+      result.push({ 
+        userId: 'me', 
+        userName: 'Your Story', 
+        userAvatar: '✦', 
+        userProfilePicture: currentUserProfilePic,
+        slides: myStories, 
+        seen: false 
+      });
     }
     result.push(...stories);
     return result;
@@ -400,6 +854,7 @@ function MessagesContent() {
       // Mark current user as seen
       if (currentUser.userId !== 'me') {
         setStories(prev => prev.map(s => s.userId === currentUser.userId ? { ...s, seen: true } : s));
+        markStoryAsSeen(currentUser.userId);
       }
       setActiveStoryUserIdx(prev => (prev !== null ? prev + 1 : null));
       setActiveSlideIdx(0);
@@ -408,6 +863,7 @@ function MessagesContent() {
       // End of all stories
       if (currentUser.userId !== 'me') {
         setStories(prev => prev.map(s => s.userId === currentUser.userId ? { ...s, seen: true } : s));
+        markStoryAsSeen(currentUser.userId);
       }
       closeStoryViewer();
     }
@@ -456,6 +912,13 @@ function MessagesContent() {
     setActiveSlideIdx(0);
     setStoryProgress(0);
     setStoryPaused(false);
+
+    const viewable = allViewableStories();
+    const currentUser = viewable[userIdx];
+    if (currentUser && currentUser.userId !== 'me') {
+       markStoryAsSeen(currentUser.userId);
+       setStories(prev => prev.map(s => s.userId === currentUser.userId ? { ...s, seen: true } : s));
+    }
   };
 
   const handleStoryReaction = (emoji: string) => {
@@ -477,46 +940,81 @@ function MessagesContent() {
     }, 900);
   };
 
-  const handleCreateStory = () => {
-    if (createStoryTab === 'text') {
-      if (!createStoryText.trim()) return;
-      const newSlide: StorySlide = {
-        id: `my-${Date.now()}`,
-        type: 'text',
-        text: createStoryText.trim(),
+  const handleCreateStory = async () => {
+    let mediaUrl = '';
+    let type: 'text' | 'image' | 'video' = 'text';
+
+    try {
+      if (createStoryTab === 'text') {
+        if (!createStoryText.trim()) return;
+        type = 'text';
+      } else {
+        if (!createStoryMedia) return;
+        type = createStoryMediaType === 'video' ? 'video' : 'image';
+        
+        // 1. Upload media
+        const res = await fetch(createStoryMedia);
+        const blob = await res.blob();
+        const file = new File([blob], `story-${Date.now()}.${type === 'video' ? 'webm' : 'jpg'}`, { type: blob.type });
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('category', 'stories');
+        
+        const uploadRes = await uploadMedia(formData);
+        mediaUrl = uploadRes.url;
+      }
+
+      // 2. Persist to DB
+      await createStory({
+        userId: currentUserId,
+        type,
+        mediaUrl,
+        text: createStoryText.trim() || undefined,
+        caption: createStoryCaption.trim() || undefined,
         gradient: STORY_GRADIENTS[createStoryGradient],
-        timestamp: 'Just now',
-      };
-      setMyStories(prev => [...prev, newSlide]);
-    } else {
-      if (!createStoryMedia) return;
+      });
+
+      // Update local state for immediate feedback (simplified)
       const newSlide: StorySlide = {
         id: `my-${Date.now()}`,
-        type: createStoryMediaType === 'video' ? 'video' : 'image',
-        mediaUrl: createStoryMedia,
+        type,
+        text: createStoryText.trim(),
+        mediaUrl: mediaUrl || createStoryMedia || undefined,
         caption: createStoryCaption.trim() || undefined,
         gradient: STORY_GRADIENTS[createStoryGradient],
         timestamp: 'Just now',
       };
       setMyStories(prev => [...prev, newSlide]);
+
+      setCreateStoryText('');
+      setCreateStoryGradient(0);
+      setCreateStoryMedia(null);
+      setCreateStoryMediaType(null);
+      setCreateStoryCaption('');
+      setCreateStoryTab('text');
+      setShowCreateStory(false);
+      setShowStorySentToast(true);
+      setTimeout(() => setShowStorySentToast(false), 2800);
+    } catch (err) {
+      console.error('Story creation error:', err);
+      alert('Failed to create story.');
     }
-    setCreateStoryText('');
-    setCreateStoryGradient(0);
-    setCreateStoryMedia(null);
-    setCreateStoryMediaType(null);
-    setCreateStoryCaption('');
-    setCreateStoryTab('text');
-    setShowCreateStory(false);
-    setShowStorySentToast(true);
-    setTimeout(() => setShowStorySentToast(false), 2800);
   };
 
-  const handleStoryMediaUpload = (e: React.ChangeEvent<HTMLInputElement>, mediaType: 'image' | 'video') => {
+  const handleStoryMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isVideo = file.type.startsWith('video/');
     const url = URL.createObjectURL(file);
+    
     setCreateStoryMedia(url);
-    setCreateStoryMediaType(mediaType);
+    setCreateStoryMediaType(isVideo ? 'video' : 'image');
+    setCreateStoryTab(isVideo ? 'video' : 'photo');
+    stopCamera();
+    
+    // Clear input so same file can be selected again if discarded
+    e.target.value = '';
   };
 
   const removeStoryMedia = () => {
@@ -524,6 +1022,11 @@ function MessagesContent() {
     setCreateStoryMediaType(null);
     if (storyMediaInputRef.current) storyMediaInputRef.current.value = '';
     if (storyVideoInputRef.current) storyVideoInputRef.current.value = '';
+    
+    // Return to the initial page (Text mode) when discarding media
+    if (createStoryTab === 'photo' || createStoryTab === 'video') {
+      setCreateStoryTab('text');
+    }
   };
 
   /* ─── Camera Functions ─── */
@@ -541,10 +1044,22 @@ function MessagesContent() {
         audio: true,
       });
       cameraStreamRef.current = stream;
+      
+      const setPreview = () => {
+        if (cameraPreviewRef.current) {
+          cameraPreviewRef.current.srcObject = stream;
+          cameraPreviewRef.current.play().catch(e => console.warn('Auto-play failed:', e));
+          setCameraActive(true);
+        }
+      };
+
+      // Set immediately if ref exists, otherwise wait a tick
       if (cameraPreviewRef.current) {
-        cameraPreviewRef.current.srcObject = stream;
+        setPreview();
+      } else {
+        setTimeout(setPreview, 50);
       }
-      setCameraActive(true);
+      
       setCameraFacing(facing);
     } catch (err: any) {
       console.error('Camera access error:', err);
@@ -558,7 +1073,11 @@ function MessagesContent() {
       cameraStreamRef.current = null;
     }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        console.error('Error stopping recorder in stopCamera:', e);
+      }
     }
     if (cameraRecordTimerRef.current) {
       clearInterval(cameraRecordTimerRef.current);
@@ -600,32 +1119,87 @@ function MessagesContent() {
       alert('Video recording is not supported in your browser.');
       return;
     }
+    
     recordedChunksRef.current = [];
-    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-      ? 'video/webm;codecs=vp9,opus'
-      : 'video/webm';
-    const recorder = new MediaRecorder(cameraStreamRef.current, { mimeType });
-    recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) recordedChunksRef.current.push(e.data);
-    };
-    recorder.onstop = () => {
-      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      setCameraCaptured(url);
-      setCameraCapturedType('video');
-      stopCamera();
-    };
-    recorder.start(100);
-    mediaRecorderRef.current = recorder;
-    setCameraRecording(true);
-    setCameraRecordTime(0);
-    cameraRecordTimerRef.current = setInterval(() => {
-      setCameraRecordTime(prev => prev + 1);
-    }, 1000);
-  }, [stopCamera]);
+    
+    // Define supported mime types to try
+    const mimeTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm',
+      'video/mp4', // Safari fallback
+      'video/ogg'
+    ];
+    
+    let selectedMimeType = '';
+    for (const type of mimeTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        selectedMimeType = type;
+        break;
+      }
+    }
+
+    try {
+      const options = selectedMimeType ? { mimeType: selectedMimeType } : {};
+      const recorder = new MediaRecorder(cameraStreamRef.current, options);
+      
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        if (recordedChunksRef.current.length === 0) {
+          console.error('No recording chunks collected');
+          return;
+        }
+        
+        const blob = new Blob(recordedChunksRef.current, { 
+          type: selectedMimeType || 'video/webm' 
+        });
+        const url = URL.createObjectURL(blob);
+        
+        setCameraCaptured(url);
+        setCameraCapturedType('video');
+        
+        // Stop the camera stream after capturing
+        if (cameraStreamRef.current) {
+          cameraStreamRef.current.getTracks().forEach(t => t.stop());
+          cameraStreamRef.current = null;
+        }
+        setCameraActive(false);
+      };
+
+      recorder.onerror = (e) => {
+        console.error('MediaRecorder error:', e);
+        alert('Recording error occurred. Please try again.');
+        setCameraRecording(false);
+        if (cameraRecordTimerRef.current) clearInterval(cameraRecordTimerRef.current);
+      };
+
+      recorder.start(200); // Collect data every 200ms
+      mediaRecorderRef.current = recorder;
+      setCameraRecording(true);
+      setCameraRecordTime(0);
+      
+      // Ensure preview keeps playing (some browsers pause it when recording starts)
+      if (cameraPreviewRef.current) {
+        cameraPreviewRef.current.play().catch(e => console.warn('Could not resume preview:', e));
+      }
+
+      if (cameraRecordTimerRef.current) clearInterval(cameraRecordTimerRef.current);
+      cameraRecordTimerRef.current = setInterval(() => {
+        setCameraRecordTime(prev => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to start recording:', err);
+      alert('Could not start video recording. Please try again or use another browser.');
+    }
+  }, []);
 
   const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
     }
     if (cameraRecordTimerRef.current) {
@@ -680,36 +1254,51 @@ function MessagesContent() {
     }
   };
 
-  useEffect(() => {
-    const chatId = searchParams.get('chatId');
-    if (chatId) {
-      setActiveChat(chatId);
-    }
-  }, [searchParams]);
+  // Duplicate useEffect removed
 
-  const activeConversation = conversations.find(c => c.id === activeChat);
-
-  const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = useCallback((instant = false) => {
+    messagesEndRef.current?.scrollIntoView({ 
+      behavior: instant ? 'auto' : 'smooth',
+      block: 'end'
+    });
   }, []);
 
   useEffect(() => {
     if (activeChat) {
-      scrollToBottom();
-      // Mark messages as read
+      // Use instant scroll for initial chat load
+      setTimeout(() => scrollToBottom(true), 10);
+      // And again after a bit more time to handle late-loading images/content
+      setTimeout(() => scrollToBottom(true), 100);
+      // Mark messages as read in DB
+      if (currentUserId !== 'me') {
+        markMessagesAsSeen(activeChat, currentUserId);
+      }
+      
+      // Update local state
       setConversations(prev => prev.map(c =>
-        c.id === activeChat ? { ...c, unreadCount: 0 } : c
+        c.id === activeChat ? { 
+          ...c, 
+          unreadCount: 0,
+          messages: c.messages.map(m => m.senderId !== 'me' ? { ...m, seen: true } : m)
+        } : c
       ));
     }
-  }, [activeChat, scrollToBottom]);
+  }, [activeChat, scrollToBottom, currentUserId]);
 
   useEffect(() => {
     scrollToBottom();
   }, [activeConversation?.messages.length, scrollToBottom]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'file') => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video' | 'file') => {
     const file = e.target.files?.[0];
     if (!file || !activeChat) return;
+
+    const previewUrl = URL.createObjectURL(file);
+    const currentConv = conversations.find(c => c.id === activeChat);
+    let expiresAt: number | undefined = undefined;
+    if (currentConv?.vanishMode && currentConv.vanishDuration) {
+      expiresAt = Date.now() + currentConv.vanishDuration * 1000;
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -718,42 +1307,89 @@ function MessagesContent() {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'sending',
       type: type,
-      attachment: URL.createObjectURL(file)
+      attachment: previewUrl,
+      expiresAt: expiresAt,
     };
 
-    setConversations(prev => prev.map(conv => {
-      if (conv.id === activeChat) {
-        return {
-          ...conv,
-          messages: [...conv.messages, newMessage],
-          lastMessage: type === 'image' ? '📷 Image' : type === 'video' ? '🎥 Video' : '📄 File',
-          lastMessageTime: 'Just now'
-        };
-      }
-      return conv;
-    }));
+    // Update local state for immediate response
+    // Update local state for immediate response and reorder
+    setConversations(prev => {
+      const activeIdx = prev.findIndex(c => c.id === activeChat);
+      if (activeIdx === -1) return prev;
+      
+      const updatedConv = {
+        ...prev[activeIdx],
+        messages: [...prev[activeIdx].messages, newMessage],
+        lastMessage: type === 'image' ? '📷 Image' : type === 'video' ? '🎥 Video' : '📄 File',
+        lastMessageTime: 'Just now',
+        rawLastMessageTime: new Date().toISOString()
+      };
+      
+      const filtered = prev.filter(c => c.id !== activeChat);
+      return [updatedConv, ...filtered];
+    });
 
     setShowShareMenu(false);
-    // Simulate server confirmation
-    setTimeout(() => {
+
+    try {
+      // 1. Upload to server
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('category', type === 'video' ? 'videos' : 'images');
+      const uploadRes = await uploadMedia(formData);
+
+      // 2. Persist to DB
+      const res = await dbSendMessage({
+        conversationId: activeChat,
+        senderId: currentUserId,
+        text: newMessage.text,
+        type: type,
+        attachment: uploadRes.url,
+        replyTo: replyingTo?.id,
+      });
+
+      if (res.conversationId && res.conversationId !== activeChat) {
+        setActiveChat(res.conversationId);
+        setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, id: res.conversationId } : c));
+      }
+
+      // Update status to sent
       setConversations(prev => prev.map(conv => {
         if (conv.id === activeChat) {
           return {
             ...conv,
-            messages: conv.messages.map(m => m.id === newMessage.id ? { ...m, status: 'sent' } : m)
+            messages: conv.messages.map(m => m.id === newMessage.id ? { ...m, status: 'sent', attachment: uploadRes.url } : m)
           };
         }
         return conv;
       }));
-    }, 1500);
+      setReplyingTo(null);
+    } catch (err) {
+      console.error('File upload error:', err);
+      setConversations(prev => prev.map(conv => {
+        if (conv.id === activeChat) {
+          return {
+            ...conv,
+            messages: conv.messages.map(m => m.id === newMessage.id ? { ...m, status: 'error' } : m)
+          };
+        }
+        return conv;
+      }));
+    }
   };
 
   const triggerUpload = (ref: React.RefObject<HTMLInputElement | null>) => {
     ref.current?.click();
   };
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!messageInput.trim() || !activeChat) return;
     
+    const currentConv = conversations.find(c => c.id === activeChat);
+    let expiresAt: number | undefined = undefined;
+    if (currentConv?.vanishMode && currentConv.vanishDuration) {
+      expiresAt = Date.now() + currentConv.vanishDuration * 1000;
+    }
+
     const newMsg: Message = {
       id: `m${Date.now()}`,
       senderId: CURRENT_USER_ID,
@@ -762,61 +1398,84 @@ function MessagesContent() {
       seen: false,
       type: 'text',
       replyTo: replyingTo?.id,
+      expiresAt: expiresAt,
     };
 
-    setConversations(prev => prev.map(c =>
-      c.id === activeChat
-        ? { ...c, messages: [...c.messages, newMsg], lastMessage: newMsg.text, lastMessageTime: 'now' }
-        : c
-    ));
+    setConversations(prev => {
+      const activeIdx = prev.findIndex(c => c.id === activeChat);
+      if (activeIdx === -1) return prev;
+
+      const updatedConv = { 
+        ...prev[activeIdx], 
+        messages: [...prev[activeIdx].messages, newMsg], 
+        lastMessage: newMsg.text, 
+        lastMessageTime: 'Just now',
+        rawLastMessageTime: new Date().toISOString()
+      };
+
+      const filtered = prev.filter(c => c.id !== activeChat);
+      return [updatedConv, ...filtered];
+    });
     setMessageInput('');
     setReplyingTo(null);
     setShowEmojiPicker(false);
 
-    // Simulate auto-reply after 2 seconds
-    setTimeout(() => {
-      const replies = [
-        'That sounds great! 😊',
-        'Haha, I know right?',
-        'Let me think about it...',
-        'Absolutely! 🎉',
-        'Good point!',
-        'I\'ll get back to you on that',
-        'Wow, really? 😮',
-        '👍',
-      ];
-      const randomReply = replies[Math.floor(Math.random() * replies.length)];
-      const replyMsg: Message = {
-        id: `m${Date.now() + 1}`,
-        senderId: activeConversation?.user.id || '',
-        text: randomReply,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        seen: false,
+    try {
+      const res = await dbSendMessage({
+        conversationId: activeChat,
+        senderId: currentUserId,
+        text: newMsg.text,
         type: 'text',
-      };
-      setConversations(prev => prev.map(c =>
-        c.id === activeChat
-          ? { ...c, messages: [...c.messages, replyMsg], lastMessage: replyMsg.text, lastMessageTime: 'now' }
-          : c
-      ));
-    }, 2000);
+        replyTo: newMsg.replyTo,
+      });
+
+      if (res.conversationId && res.conversationId !== activeChat) {
+        setActiveChat(res.conversationId);
+        setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, id: res.conversationId } : c));
+      }
+    } catch (err) {
+      console.error('Send message error:', err);
+    }
   };
 
-  const sendHeart = () => {
+
+  const sendHeart = async () => {
     if (!activeChat) return;
     const heartMsg: Message = {
       id: `m${Date.now()}`,
       senderId: CURRENT_USER_ID,
       text: '❤️',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      timestamp: 'Just now',
       seen: false,
       type: 'heart',
     };
-    setConversations(prev => prev.map(c =>
-      c.id === activeChat
-        ? { ...c, messages: [...c.messages, heartMsg], lastMessage: '❤️', lastMessageTime: 'now' }
-        : c
-    ));
+    
+    setConversations(prev => {
+      const activeIdx = prev.findIndex(c => c.id === activeChat);
+      if (activeIdx === -1) return prev;
+
+      const updatedConv = { 
+        ...prev[activeIdx], 
+        messages: [...prev[activeIdx].messages, heartMsg], 
+        lastMessage: '❤️', 
+        lastMessageTime: 'Just now',
+        rawLastMessageTime: new Date().toISOString()
+      };
+
+      const filtered = prev.filter(c => c.id !== activeChat);
+      return [updatedConv, ...filtered];
+    });
+
+    try {
+      await dbSendMessage({
+        conversationId: activeChat,
+        senderId: currentUserId,
+        text: '❤️',
+        type: 'heart',
+      });
+    } catch (err) {
+      console.error('Send heart error:', err);
+    }
   };
 
   const addReaction = (msgId: string, emoji: string) => {
@@ -843,13 +1502,58 @@ function MessagesContent() {
     }
   };
 
-  const filteredConversations = conversations.filter(c =>
-    c.user.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
-  const handleMsgTouchStart = (msgId: string) => {
+
+  const filteredConversations = conversations
+    .filter(c => {
+      // Show if it has messages OR if it's the currently active chat
+      const isNew = String(c.id).startsWith('new_');
+      if (isNew) {
+        return c.id === activeChat || c.messages.length > 0;
+      }
+      // For existing chats, search by name
+      return c.user.name.toLowerCase().includes(searchQuery.toLowerCase());
+    })
+
+    .sort((a, b) => {
+      // 1. Draft conversations (new_) always on top
+      const aNew = String(a.id).startsWith('new_');
+      const bNew = String(b.id).startsWith('new_');
+      if (aNew !== bNew) return aNew ? -1 : 1;
+
+      // 2. Prioritize conversations with unread messages
+      if (a.unreadCount !== b.unreadCount) {
+        return b.unreadCount - a.unreadCount;
+      }
+
+      // 3. Sort by raw timestamp (ISO string) desc
+      const getTime = (c: any) => {
+        if (c.rawLastMessageTime) {
+          const t = new Date(c.rawLastMessageTime).getTime();
+          if (!isNaN(t)) return t;
+        }
+        return 0;
+      };
+
+      const timeA = getTime(a);
+      const timeB = getTime(b);
+
+      if (timeA !== timeB) {
+        return timeB - timeA;
+      }
+
+      // 4. Fallback for "Just now" (though rawLastMessageTime should handle it)
+      if (a.lastMessageTime === 'Just now' && b.lastMessageTime !== 'Just now') return -1;
+      if (a.lastMessageTime !== 'Just now' && b.lastMessageTime === 'Just now') return 1;
+
+      return 0;
+    });
+
+  const handleMsgTouchStart = (msg: Message) => {
     longPressTimer.current = setTimeout(() => {
-      setLongPressMsg(msgId);
+      setSelectedMessage(msg);
+      // We can keep reaction popover or move it too. User said "option will appear in header"
+      // so we'll move actions to header.
     }, 500);
   };
 
@@ -867,20 +1571,27 @@ function MessagesContent() {
       <div className="msg-chat-info-overlay" onClick={() => setShowChatInfo(false)}>
         <div className="msg-chat-info-panel" onClick={e => e.stopPropagation()}>
           <button className="msg-chat-info-close" onClick={() => setShowChatInfo(false)}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
           <div className="msg-info-avatar-section">
             <div className={`msg-info-avatar-ring ${user.online ? 'online' : ''}`}>
-              <div className="msg-info-avatar-circle">{user.avatar}</div>
+              <div className="msg-info-avatar-circle">
+                {user.profilePicture ? (
+                  <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : user.avatar}
+              </div>
             </div>
             <h2 className="msg-info-name">{user.name}</h2>
             <span className="msg-info-status">{user.online ? 'Active now' : `Last seen ${user.lastSeen || 'recently'}`}</span>
           </div>
           <div className="msg-info-actions">
-            <Link href="/profile" className="msg-info-action-btn" style={{ textDecoration: 'none' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            <Link href={`/profile/${user.id}`} className="msg-info-action-btn" style={{ textDecoration: 'none' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
               <span>Profile</span>
             </Link>
             <button className="msg-info-action-btn" onClick={() => setShowFutureModal(true)}>
@@ -891,8 +1602,21 @@ function MessagesContent() {
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               <span>Video</span>
             </button>
-            <button className="msg-info-action-btn" onClick={() => setShowMuteToast(true)} style={{ cursor: 'pointer' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <button 
+              className={`msg-info-action-btn ${activeConversation.muted ? 'active' : ''}`} 
+              onClick={toggleMute} 
+              style={{ cursor: 'pointer' }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill={activeConversation.muted ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {activeConversation.muted ? (
+                  <path d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+                ) : (
+                  <>
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                  </>
+                )}
+              </svg>
               <span>{activeConversation.muted ? 'Unmute' : 'Mute'}</span>
             </button>
           </div>
@@ -909,7 +1633,7 @@ function MessagesContent() {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
               <span>Block User</span>
             </div>
-            <div className="msg-info-option danger">
+            <div className="msg-info-option danger" onClick={() => setShowDeleteConfirm(true)} style={{ cursor: 'pointer' }}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
               <span>Delete Chat</span>
             </div>
@@ -983,7 +1707,11 @@ function MessagesContent() {
                   onClick={() => openStory(storyIdx)}
                 >
                   <div className={`msg-online-avatar-ring ${story.seen ? 'story-seen' : 'has-story'}`}>
-                    <div className="msg-online-avatar">{conv.user.avatar}</div>
+                    <div className="msg-online-avatar">
+                      {conv.user.profilePicture ? (
+                        <img src={conv.user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      ) : conv.user.avatar}
+                    </div>
                   </div>
                   {conv.user.online && <span className="msg-online-dot" />}
                   <span className="msg-online-name">{conv.user.name.split(' ')[0]}</span>
@@ -999,19 +1727,27 @@ function MessagesContent() {
                   onClick={() => setActiveChat(c.id)}
                 >
                   <div className="msg-online-avatar-ring">
-                    <div className="msg-online-avatar">{c.user.avatar}</div>
+                    <div className="msg-online-avatar">
+                      {c.user.profilePicture ? (
+                        <img src={c.user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                      ) : c.user.avatar}
+                    </div>
                   </div>
                   <span className="msg-online-dot" />
                   <span className="msg-online-name">{c.user.name.split(' ')[0]}</span>
                 </button>
               ));
-            return [...friendsWithStories, ...onlineWithoutStories];
+            return friendsWithStories.filter(Boolean);
           })()}
         </div>
       </div>
 
       {/* Conversation items */}
       <div className="msg-conversation-list">
+        {filteredConversations.length === 0 && searchQuery.trim() && searchResults.length === 0 && (
+          <div className="msg-search-empty">No conversations found</div>
+        )}
+
         {filteredConversations.map(conv => (
           <button
             key={conv.id}
@@ -1020,7 +1756,9 @@ function MessagesContent() {
           >
             <div className="msg-conv-avatar-wrapper">
               <div className={`msg-conv-avatar ${conv.user.online ? 'online' : ''}`}>
-                {conv.user.avatar}
+                {conv.user.profilePicture ? (
+                  <img src={conv.user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : conv.user.avatar}
               </div>
               {conv.user.online && <span className="msg-conv-online-dot" />}
             </div>
@@ -1051,6 +1789,68 @@ function MessagesContent() {
             </div>
           </button>
         ))}
+
+        {/* Global Search Results */}
+        {searchResults.length > 0 && (
+          <div className="msg-search-results-section">
+            <h3 className="msg-search-results-title">Other Users</h3>
+            {searchResults.map(user => {
+              const displayName = (user.name && user.name.includes('/uploads/')) 
+                ? (user.username || 'User') 
+                : (user.name || 'Unknown User');
+              
+              return (
+                <button
+                  key={user.id}
+                  className="msg-conversation-item search-result"
+                  onClick={async () => {
+                    const newConv: Conversation = {
+                      id: `new_${user.id}`,
+                      user: {
+                        id: user.id,
+                        name: displayName,
+                        avatar: displayName ? displayName.substring(0, 1) : '👤',
+                        profilePicture: user.profilePicture,
+                        online: false,
+                      },
+                      lastMessage: '',
+                      lastMessageTime: '',
+                      rawLastMessageTime: '',
+                      unreadCount: 0,
+                      isTyping: false,
+                      muted: false,
+                      vanishMode: false,
+                      vanishDuration: 3600,
+                      messages: [],
+                    };
+                    setConversations(prev => {
+                        if (prev.find(c => c.id === newConv.id)) return prev;
+                        return [newConv, ...prev];
+                    });
+                    setActiveChat(newConv.id);
+                    setSearchQuery('');
+                    setSearchResults([]);
+                  }}
+                >
+                  <div className="msg-conv-avatar-wrapper">
+                    <div className="msg-conv-avatar">
+                      {user.profilePicture ? <img src={user.profilePicture} alt="" /> : displayName.charAt(0)}
+                    </div>
+                  </div>
+                  <div className="msg-conv-content">
+                    <div className="msg-conv-top">
+                      <span className="msg-conv-name">{displayName}</span>
+                    </div>
+                    <div className="msg-conv-bottom">
+                      <span className="msg-conv-preview">@{user.username}</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+
+          </div>
+        )}
       </div>
       <div className="msg-list-footer">
         <MobileBottomNav />
@@ -1085,43 +1885,85 @@ function MessagesContent() {
     return (
       <div className={`msg-chat-panel ${activeChat ? 'msg-chat-visible-mobile' : ''} ${activeConversation.vanishMode ? 'vanish-mode' : ''}`}>
         {/* Chat Header */}
-        <div className="msg-chat-header">
-          <button className="msg-back-btn" onClick={() => setActiveChat(null)}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <div className="msg-chat-header-user" onClick={() => setShowChatInfo(true)}>
-            <div className={`msg-chat-header-avatar ${user.online ? 'online' : ''}`}>
-              {user.avatar}
+        <div className={`msg-chat-header ${selectedMessage ? 'message-selected' : ''}`}>
+          {selectedMessage ? (
+            <div className="msg-header-selection-mode">
+              <button className="msg-header-action-back" onClick={() => setSelectedMessage(null)}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+              <span className="msg-header-selection-count">1 Selected</span>
+              <div className="msg-header-selection-actions">
+                <button className="msg-header-action-btn" title="Reply" onClick={() => { setReplyingTo(selectedMessage); setSelectedMessage(null); }}>
+                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M9 14l-5-5 5-5"/><path d="M4 9h12a5 5 0 0 1 0 10H7"/></svg>
+                </button>
+                {(selectedMessage.type === 'file' || selectedMessage.type === 'image' || selectedMessage.type === 'video') && selectedMessage.attachment && (
+                  <a 
+                    href={selectedMessage.attachment} 
+                    download 
+                    className="msg-header-action-btn" 
+                    title="Download"
+                    onClick={() => setSelectedMessage(null)}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                )}
+                {selectedMessage.senderId === CURRENT_USER_ID && selectedMessage.type === 'text' && (
+                  <button className="msg-header-action-btn" title="Edit" onClick={() => { handleEditMessage(selectedMessage); setSelectedMessage(null); }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                )}
+                {selectedMessage.senderId === CURRENT_USER_ID && (
+                  <button className="msg-header-action-btn danger" title="Delete" onClick={() => { handleDeleteMessage(selectedMessage.id); setSelectedMessage(null); }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                )}
+              </div>
+
             </div>
-            <div className="msg-chat-header-info">
-              <span className="msg-chat-header-name">{user.name}</span>
-              <span className="msg-chat-header-status">
-                {activeConversation.isTyping ? (
-                  <span className="msg-typing-indicator">typing<span className="msg-typing-dots"><span>.</span><span>.</span><span>.</span></span></span>
-                ) : user.online ? 'Active now' : `${user.lastSeen || 'Offline'}`}
-              </span>
-            </div>
-          </div>
-          <div className="msg-chat-header-actions">
-            <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => setShowFutureModal(true)}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
-              </svg>
-            </button>
-            <button className="msg-chat-action-btn" aria-label="Video call" onClick={() => setShowFutureModal(true)}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <polygon points="23 7 16 12 23 17 23 7" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-              </svg>
-            </button>
-            <button className="msg-chat-action-btn" aria-label="More options" onClick={() => setShowChatInfo(!showChatInfo)}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
-              </svg>
-            </button>
-          </div>
+          ) : (
+            <>
+              <button className="msg-back-btn" onClick={closeChat}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+              <div className="msg-chat-header-user" onClick={() => setShowChatInfo(true)}>
+                <div className={`msg-chat-header-avatar ${user.online ? 'online' : ''}`}>
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : user.avatar}
+                </div>
+                <div className="msg-chat-header-info">
+                  <span className="msg-chat-header-name">{user.name}</span>
+                  <span className="msg-chat-header-status">
+                    {activeConversation.isTyping ? (
+                      <span className="msg-typing-indicator">typing<span className="msg-typing-dots"><span>.</span><span>.</span><span>.</span></span></span>
+                    ) : user.online ? 'Active now' : `${user.lastSeen || 'Offline'}`}
+                  </span>
+                </div>
+              </div>
+              <div className="msg-chat-header-actions">
+                <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => setShowFutureModal(true)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
+                  </svg>
+                </button>
+                <button className="msg-chat-action-btn" aria-label="Video call" onClick={() => setShowFutureModal(true)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <polygon points="23 7 16 12 23 17 23 7" />
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                  </svg>
+                </button>
+                <button className="msg-chat-action-btn" aria-label="More options" onClick={() => setShowChatInfo(!showChatInfo)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+                  </svg>
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Messages Area */}
@@ -1138,7 +1980,11 @@ function MessagesContent() {
           {/* Chat intro */}
           <div className="msg-chat-intro">
             <div className={`msg-intro-avatar-ring ${user.online ? 'online' : ''}`}>
-              <div className="msg-intro-avatar">{user.avatar}</div>
+              <div className="msg-intro-avatar">
+                {user.profilePicture ? (
+                  <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : user.avatar}
+              </div>
             </div>
             <h3 className="msg-intro-name">{user.name}</h3>
             <p className="msg-intro-subtitle">ProxyPress · You both follow each other</p>
@@ -1147,54 +1993,157 @@ function MessagesContent() {
           {/* Message bubbles */}
           {messages.map((msg, i) => {
             const isMine = msg.senderId === CURRENT_USER_ID;
-            const showAvatar = !isMine && (i === 0 || messages[i - 1].senderId === CURRENT_USER_ID);
+
             const isLastInGroup = i === messages.length - 1 || messages[i + 1]?.senderId !== msg.senderId;
 
             return (
               <div
                 key={msg.id}
-                className={`msg-bubble-row ${isMine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last-in-group' : ''}`}
-                onMouseDown={() => handleMsgTouchStart(msg.id)}
+                className={`msg-bubble-row ${isMine ? 'mine' : 'theirs'} ${isLastInGroup ? 'last-in-group' : ''} ${selectedMessage?.id === msg.id ? 'selected' : ''}`}
+                onMouseDown={() => handleMsgTouchStart(msg)}
                 onMouseUp={handleMsgTouchEnd}
-                onTouchStart={() => handleMsgTouchStart(msg.id)}
+                onTouchStart={() => handleMsgTouchStart(msg)}
                 onTouchEnd={handleMsgTouchEnd}
               >
-                {!isMine && showAvatar && (
-                  <div className="msg-bubble-avatar">{user.avatar}</div>
-                )}
-                {!isMine && !showAvatar && <div className="msg-bubble-avatar-spacer" />}
+
                 <div className="msg-bubble-content-wrapper">
-                  {replyingTo && msg.replyTo && (
-                    <div className="msg-reply-preview-in-bubble">
-                      <span>Replying to a message</span>
-                    </div>
-                  )}
-                  <div className={`msg-bubble ${isMine ? 'mine' : 'theirs'} ${msg.type === 'heart' ? 'heart-msg' : ''} ${msg.attachment ? 'has-attachment' : ''}`}>
-                    {msg.type === 'heart' ? (
-                      <span className="msg-heart-emoji">❤️</span>
-                    ) : msg.attachment && msg.type === 'image' ? (
-                      <div className="msg-image-attachment">
-                        <img src={msg.attachment} alt="Uploaded" className="msg-attachment-media" />
-                      </div>
-                    ) : msg.attachment && msg.type === 'video' ? (
-                      <div className="msg-video-attachment">
-                        <video src={msg.attachment} className="msg-attachment-media" controls={false} />
-                        <div className="msg-video-overlay">
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                        </div>
-                      </div>
-                    ) : msg.attachment && msg.type === 'file' ? (
-                      <div className="msg-file-attachment">
-                        <div className="msg-file-icon">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        </div>
-                        <div className="msg-file-info">
-                          <span className="msg-file-name">{msg.text.replace('Sent a file: ', '')}</span>
-                          <span className="msg-file-size">File Attachment</span>
+                  <div className={`msg-bubble ${isMine ? 'mine' : 'theirs'} ${msg.type === 'heart' ? 'heart-msg' : ''} ${msg.attachment ? 'has-attachment' : ''} ${msg.isDeleted ? 'deleted' : ''}`}>
+                    {msg.isDeleted ? (
+                      <p className="msg-bubble-text deleted-text">
+                        This message was deleted
+                      </p>
+                    ) : editingMessageId === msg.id ? (
+                      <div className="msg-edit-wrapper">
+                        <input
+                          autoFocus
+                          className="msg-edit-input"
+                          value={editingText}
+                          onChange={e => setEditingText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveEdit();
+                            if (e.key === 'Escape') setEditingMessageId(null);
+                          }}
+                        />
+                        <div className="msg-edit-actions">
+                           <button onClick={() => setEditingMessageId(null)}>Cancel</button>
+                           <button onClick={handleSaveEdit} className="save">Save</button>
                         </div>
                       </div>
                     ) : (
-                      <p className="msg-bubble-text">{msg.text}</p>
+                      <>
+                        {msg.replyTo && (
+                          <div className="msg-quoted-reply">
+                            {(() => {
+                              const quoted = messages.find(m => m.id === msg.replyTo);
+                              const getQuotedText = () => {
+                                if (!quoted) return 'Message unavailable';
+                                if (quoted.isDeleted) return 'Deleted message';
+                                if (quoted.type === 'image') return '📷 Photo';
+                                if (quoted.type === 'video') return '🎥 Video';
+                                if (quoted.type === 'voice') return '🎤 Voice message';
+                                if (quoted.type === 'file') return '📄 File';
+                                if (quoted.type === 'heart') return '❤️ Love';
+                                return quoted.text;
+                              };
+                              return (
+                                <>
+                                  <span className="msg-quoted-name">{quoted?.senderId === 'me' ? 'You' : user.name}</span>
+                                  <p className="msg-quoted-text">{getQuotedText()}</p>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
+                        {msg.type === 'heart' ? (
+                          <span className="msg-heart-emoji">❤️</span>
+                         ) : msg.attachment && msg.type === 'image' ? (
+                           <div 
+                             className="msg-image-attachment"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setLightboxMedia({
+                                 url: msg.attachment!,
+                                 msgId: msg.id,
+                                 sender: isMine ? 'You' : user.name,
+                                 time: msg.timestamp
+                               });
+                               setLightboxControlsVisible(true);
+                             }}
+
+                           >
+                             <img src={msg.attachment} alt="Uploaded" className="msg-attachment-media" />
+                           </div>
+
+                         ) : msg.attachment && msg.type === 'video' ? (
+                           <div 
+                             className="msg-video-attachment"
+                             onClick={(e) => {
+                               e.stopPropagation();
+                               setLightboxMedia({
+                                 url: msg.attachment!,
+                                 msgId: msg.id,
+                                 sender: isMine ? 'You' : user.name,
+                                 time: msg.timestamp,
+                                 type: 'video'
+                               });
+                               setLightboxControlsVisible(true);
+                             }}
+                           >
+                             <video src={msg.attachment} className="msg-attachment-media" controls={false} />
+                             <div className="msg-video-overlay">
+                               <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                             </div>
+                           </div>
+
+                        ) : msg.attachment && msg.type === 'file' ? (
+                          <div className="msg-file-attachment">
+                            <div className="msg-file-icon">
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            </div>
+                            <div className="msg-file-info">
+                              <span className="msg-file-name">{msg.text.replace('Sent a file: ', '')}</span>
+                              <span className="msg-file-size">File Attachment</span>
+                            </div>
+                          </div>
+                        ) : msg.attachment && msg.type === 'voice' ? (
+                          <div className="msg-voice-attachment">
+                            <div 
+                              className="msg-voice-play-btn"
+                              onClick={() => toggleVoicePlay(msg.id, msg.attachment!)}
+                            >
+                              {playingVoiceId === msg.id ? (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                  <rect x="6" y="4" width="4" height="16" />
+                                  <rect x="14" y="4" width="4" height="16" />
+                                </svg>
+                              ) : (
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="msg-voice-waveform">
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '40%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '70%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '100%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '60%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '80%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '50%' }} />
+                              <div className={`msg-voice-line ${playingVoiceId === msg.id ? 'playing' : ''}`} style={{ height: '30%' }} />
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="msg-bubble-text">{msg.text}</p>
+                        )}
+                        <div className="msg-bubble-status-row">
+                          {msg.isEdited && <span className="msg-edited-tag">Edited</span>}
+                          {(msg as any).expiresAt && (
+                            <div className="msg-vanish-timer" title="This message will vanish">
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                   {/* Reactions */}
@@ -1210,22 +2159,21 @@ function MessagesContent() {
                     <div className={`msg-meta ${isMine ? 'mine' : 'theirs'}`}>
                       <span className="msg-time">{msg.timestamp}</span>
                       {isMine && (
-                        <span className={`msg-seen-status ${msg.seen ? 'seen' : ''}`}>
-                          {msg.seen ? (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="2 12 7 17 12 12" /><polyline points="12 12 17 17 22 12" />
+                        <div className={`msg-seen-status ${msg.seen ? 'seen' : ''}`}>
+                          <div className={`msg-status-icons ${msg.seen ? 'seen' : ''}`}>
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-1">
+                              <polyline points="4 12 9 17 20 6" />
                             </svg>
-                          ) : (
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12" />
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-2">
+                              <polyline points="4 12 9 17 20 6" />
                             </svg>
-                          )}
-                        </span>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
-                  {/* Long press reaction popover */}
-                  {longPressMsg === msg.id && (
+                  {/* Reactions popover (optional, keeping for emoji only if needed, but moving all to header for now) */}
+                  {longPressMsg === msg.id && !msg.isDeleted && (
                     <div className="msg-reaction-popover">
                       {['❤️', '😂', '😮', '😢', '😡', '👍'].map(emoji => (
                         <button key={emoji} className="msg-reaction-choice" onClick={() => addReaction(msg.id, emoji)}>
@@ -1242,7 +2190,7 @@ function MessagesContent() {
           {/* Typing indicator */}
           {activeConversation.isTyping && (
             <div className="msg-bubble-row theirs">
-              <div className="msg-bubble-avatar">{user.avatar}</div>
+
               <div className="msg-bubble theirs">
                 <div className="msg-typing-bubble">
                   <span className="msg-typing-dot" />
@@ -1339,47 +2287,75 @@ function MessagesContent() {
             accept=".pdf,.doc,.docx,.txt"
             onChange={e => handleFileUpload(e, 'file')}
           />
+          
           <div className="msg-input-row">
-            <button
-              className={`msg-input-icon-btn ${showShareMenu ? 'active' : ''}`}
-              onClick={() => setShowShareMenu(!showShareMenu)}
-              aria-label="Share options"
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
-            <div className="msg-input-wrapper">
-              <input
-                ref={inputRef}
-                type="text"
-                className="msg-text-input"
-                placeholder="Message..."
-                value={messageInput}
-                onChange={e => setMessageInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-              />
-              <button
-                className={`msg-input-emoji-inline-btn ${showEmojiPicker ? 'active' : ''}`}
-                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                aria-label="Emoji"
-              >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                  <line x1="9" y1="9" x2="9.01" y2="9" />
-                  <line x1="15" y1="9" x2="15.01" y2="9" />
-                </svg>
-              </button>
-            </div>
+            {!isVoiceRecording ? (
+              <>
+                <button
+                  className={`msg-input-icon-btn ${showShareMenu ? 'active' : ''}`}
+                  onClick={() => setShowShareMenu(!showShareMenu)}
+                  aria-label="Share options"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </button>
+                <div className="msg-input-wrapper">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    className="msg-text-input"
+                    placeholder="Message..."
+                    value={messageInput}
+                    onChange={e => setMessageInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                  />
+                  <button
+                    className={`msg-input-emoji-inline-btn ${showEmojiPicker ? 'active' : ''}`}
+                    onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                    aria-label="Emoji"
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10" />
+                      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                      <line x1="9" y1="9" x2="9.01" y2="9" />
+                      <line x1="15" y1="9" x2="15.01" y2="9" />
+                    </svg>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="msg-recording-bar">
+                <div className="msg-recording-indicator">
+                  <div className="msg-recording-dot" />
+                  <span className="msg-recording-timer">{formatDuration(voiceRecordingDuration)}</span>
+                </div>
+                <button className="msg-recording-cancel" onClick={() => stopVoiceRecording(false)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
             <button 
-              className={`msg-send-btn ${!messageInput.trim() ? 'mic-mode' : ''}`}
-              onClick={() => messageInput.trim() ? sendMessage() : setShowFutureModal(true)}
-              aria-label={messageInput.trim() ? "Send message" : "Voice message"}
+              className={`msg-send-btn ${!messageInput.trim() && !isVoiceRecording ? 'mic-mode' : ''} ${isVoiceRecording ? 'recording' : ''}`}
+              onClick={() => {
+                if (isVoiceRecording) {
+                  stopVoiceRecording(true);
+                } else if (messageInput.trim()) {
+                  sendMessage();
+                } else {
+                  startVoiceRecording();
+                }
+              }}
+              aria-label={messageInput.trim() ? "Send message" : isVoiceRecording ? "Stop recording" : "Voice message"}
             >
               {messageInput.trim() ? (
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              ) : isVoiceRecording ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" className="msg-send-vibe">
                   <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                 </svg>
               ) : (
@@ -1440,7 +2416,11 @@ function MessagesContent() {
 
           {/* Header */}
           <div className="story-header">
-            <div className="story-header-avatar">{currentUser.userAvatar}</div>
+            <div className="story-header-avatar">
+              {currentUser.userProfilePicture ? (
+                <img src={currentUser.userProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+              ) : currentUser.userAvatar}
+            </div>
             <div className="story-header-info">
               <span className="story-header-name">{currentUser.userName}</span>
               <span className="story-header-time">{currentSlide.timestamp}</span>
@@ -1561,7 +2541,7 @@ function MessagesContent() {
     );
   };
 
-  /* ─── CREATE STORY MODAL ─── */
+  /* ─── CREATE STORY MODAL (WhatsApp-Style Full Screen) ─── */
   const renderCreateStoryModal = () => {
     if (!showCreateStory) return null;
 
@@ -1580,265 +2560,344 @@ function MessagesContent() {
       setCameraCapturedType(null);
     };
 
+    const currentGradient = STORY_GRADIENTS[createStoryGradient];
+
     return (
-      <div className="story-create-overlay" onClick={closeCreateModal}>
-        <div className="story-create-sheet" onClick={e => e.stopPropagation()}>
-          <div className="story-create-handle" />
-          <h2 className="story-create-title">Create Story</h2>
-          <p className="story-create-subtitle">Share a moment with your friends</p>
+      <div className="wa-story-fullscreen" id="create-story-screen">
+        {/* Hidden file inputs */}
+        <input
+          type="file"
+          ref={storyMediaInputRef}
+          style={{ display: 'none' }}
+          accept="image/*,video/*"
+          onChange={handleStoryMediaUpload}
+        />
+        {/* We can safely remove storyVideoInputRef since unified input handles both */}
+        <canvas ref={cameraCanvasRef} style={{ display: 'none' }} />
 
-          {/* Hidden file inputs */}
-          <input
-            type="file"
-            ref={storyMediaInputRef}
-            style={{ display: 'none' }}
-            accept="image/*"
-            onChange={e => handleStoryMediaUpload(e, 'image')}
-          />
-          <input
-            type="file"
-            ref={storyVideoInputRef}
-            style={{ display: 'none' }}
-            accept="video/*"
-            onChange={e => handleStoryMediaUpload(e, 'video')}
-          />
+        {/* ═══ TEXT MODE ═══ */}
+        {createStoryTab === 'text' && (
+          <div className="wa-story-text-mode" style={{ background: currentGradient }}>
+            {/* Top bar */}
+            <div className="wa-story-topbar">
+              <button className="wa-story-close-btn" onClick={closeCreateModal} id="story-close-btn">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+              <div className="wa-story-topbar-actions">
+                <button
+                  className="wa-story-icon-btn"
+                  onClick={() => setCreateStoryGradient(prev => (prev + 1) % STORY_GRADIENTS.length)}
+                  title="Change background"
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/><circle cx="8.5" cy="15.5" r="2.5"/>
+                    <path d="M13.5 9a5 5 0 0 1 4 6M13.5 9a5 5 0 0 0-4 6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
 
-          {/* Tab Switcher */}
-          <div className="story-create-tabs">
-            <button 
-              className={`story-create-tab ${createStoryTab === 'text' ? 'active' : ''}`}
-              onClick={() => setCreateStoryTab('text')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
-              </svg>
-              <span>Text</span>
-            </button>
-            <button 
-              className={`story-create-tab ${createStoryTab === 'photo' ? 'active' : ''}`}
-              onClick={() => setCreateStoryTab('photo')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-              </svg>
-              <span>Photo</span>
-            </button>
-            <button 
-              className={`story-create-tab ${createStoryTab === 'video' ? 'active' : ''}`}
-              onClick={() => setCreateStoryTab('video')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-              </svg>
-              <span>Video</span>
-            </button>
-            <button 
-              className={`story-create-tab ${createStoryTab === 'camera' ? 'active' : ''}`}
-              onClick={() => setCreateStoryTab('camera')}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span>Camera</span>
-            </button>
-          </div>
+            {/* Text Input Area - centered */}
+            <div className="wa-story-text-center">
+              <textarea
+                className="wa-story-text-input"
+                placeholder="Type a status..."
+                value={createStoryText}
+                onChange={e => setCreateStoryText(e.target.value)}
+                maxLength={200}
+                autoFocus
+              />
+            </div>
 
-          {/* Tab Content */}
-          {createStoryTab === 'text' && (
-            <>
-              <div className="story-create-input-section">
-                <textarea
-                  className="story-create-textarea"
-                  placeholder="What's on your mind? ✨"
-                  value={createStoryText}
-                  onChange={e => setCreateStoryText(e.target.value)}
-                  maxLength={120}
+            {/* Gradient Selector Strip */}
+            <div className="wa-story-gradient-strip">
+              {STORY_GRADIENTS.map((gradient, idx) => (
+                <button
+                  key={idx}
+                  className={`wa-story-gradient-dot ${createStoryGradient === idx ? 'active' : ''}`}
+                  style={{ background: gradient }}
+                  onClick={() => setCreateStoryGradient(idx)}
                 />
-              </div>
-              <span className="story-create-label">Background</span>
-              <div className="story-gradient-grid">
-                {STORY_GRADIENTS.map((gradient, idx) => (
-                  <div
-                    key={idx}
-                    className={`story-gradient-option ${createStoryGradient === idx ? 'selected' : ''}`}
-                    style={{ background: gradient }}
-                    onClick={() => setCreateStoryGradient(idx)}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          {createStoryTab === 'photo' && (
-            <div className="story-media-upload-section">
-              {!createStoryMedia ? (
-                <button 
-                  className="story-media-dropzone"
-                  onClick={() => storyMediaInputRef.current?.click()}
-                >
-                  <div className="story-dropzone-icon">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                    </svg>
-                  </div>
-                  <span className="story-dropzone-title">Add a Photo</span>
-                  <span className="story-dropzone-hint">Tap to select from your gallery</span>
-                </button>
-              ) : (
-                <div className="story-media-preview-wrap">
-                  <img src={createStoryMedia} alt="Preview" className="story-media-preview" />
-                  <button className="story-media-remove-btn" onClick={removeStoryMedia}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              <textarea
-                className="story-create-textarea story-caption-input"
-                placeholder="Add a caption... ✍️"
-                value={createStoryCaption}
-                onChange={e => setCreateStoryCaption(e.target.value)}
-                maxLength={100}
-                rows={2}
-              />
+              ))}
             </div>
-          )}
 
-          {createStoryTab === 'video' && (
-            <div className="story-media-upload-section">
-              {!createStoryMedia ? (
-                <button 
-                  className="story-media-dropzone"
-                  onClick={() => storyVideoInputRef.current?.click()}
-                >
-                  <div className="story-dropzone-icon video">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                    </svg>
-                  </div>
-                  <span className="story-dropzone-title">Add a Video</span>
-                  <span className="story-dropzone-hint">Tap to select from your gallery</span>
+            {/* Bottom Controls */}
+            <div className="wa-story-bottom-bar">
+              <div className="wa-story-mode-switcher">
+                <button className={`wa-story-mode-btn ${createStoryTab === 'text' ? 'active' : ''}`} onClick={() => setCreateStoryTab('text')}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
+                  </svg>
+                  <span>Text</span>
                 </button>
-              ) : (
-                <div className="story-media-preview-wrap">
-                  <video src={createStoryMedia} className="story-media-preview" muted autoPlay loop playsInline />
-                  <button className="story-media-remove-btn" onClick={removeStoryMedia}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-              <textarea
-                className="story-create-textarea story-caption-input"
-                placeholder="Add a caption... ✍️"
-                value={createStoryCaption}
-                onChange={e => setCreateStoryCaption(e.target.value)}
-                maxLength={100}
-                rows={2}
-              />
+                <button className={`wa-story-mode-btn ${createStoryTab === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                  </svg>
+                  <span>Camera</span>
+                </button>
+              </div>
+              <button
+                className="wa-story-send-fab"
+                disabled={!canPost}
+                onClick={handleCreateStory}
+                id="story-send-btn"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Camera Tab */}
-          {createStoryTab === 'camera' && (
-            <div className="story-camera-section">
-              {/* Hidden canvas for photo capture */}
-              <canvas ref={cameraCanvasRef} style={{ display: 'none' }} />
-
+        {/* ═══ CAMERA MODE ═══ */}
+        {createStoryTab === 'camera' && (
+          <div className="wa-story-camera-mode">
+            {/* Camera viewfinder */}
+            <div className="wa-story-camera-vf">
               {!cameraCaptured ? (
                 <>
-                  <div className="story-camera-viewport">
-                    <video
-                      ref={cameraPreviewRef}
-                      className={`story-camera-preview ${cameraFacing === 'user' ? 'mirrored' : ''}`}
-                      autoPlay
-                      playsInline
-                      muted
-                    />
-                    {!cameraActive && (
-                      <div className="story-camera-loading">
-                        <div className="story-camera-loading-spinner" />
-                        <span>Starting camera...</span>
-                      </div>
-                    )}
-                    {cameraRecording && (
-                      <div className="story-camera-rec-badge">
-                        <span className="story-rec-dot" />
-                        <span>{String(Math.floor(cameraRecordTime / 60)).padStart(2, '0')}:{String(cameraRecordTime % 60).padStart(2, '0')}</span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="story-camera-controls">
-                    <button className="story-camera-flip-btn" onClick={flipCamera} title="Flip camera">
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
-                        <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
-                      </svg>
-                    </button>
-                    {!cameraRecording ? (
-                      <button className="story-camera-shutter" onClick={capturePhoto}>
-                        <div className="story-shutter-inner" />
-                      </button>
-                    ) : (
-                      <button className="story-camera-shutter recording" onClick={stopRecording}>
-                        <div className="story-shutter-stop" />
-                      </button>
-                    )}
-                    {!cameraRecording ? (
-                      <button className="story-camera-record-btn" onClick={startRecording} title="Record video">
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
-                        </svg>
-                      </button>
-                    ) : (
-                      <div style={{ width: 46 }} />
-                    )}
-                  </div>
+                  <video
+                    ref={cameraPreviewRef}
+                    className={`wa-story-cam-feed ${cameraFacing === 'user' ? 'mirrored' : ''}`}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
+                  {!cameraActive && (
+                    <div className="wa-story-cam-loading">
+                      <div className="wa-story-cam-spinner" />
+                      <span>Starting camera...</span>
+                    </div>
+                  )}
+                  {cameraRecording && (
+                    <div className="wa-story-rec-indicator">
+                      <span className="wa-story-rec-dot" />
+                      <span>{String(Math.floor(cameraRecordTime / 60)).padStart(2, '0')}:{String(cameraRecordTime % 60).padStart(2, '0')}</span>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
-                  <div className="story-camera-viewport captured">
-                    {cameraCapturedType === 'image' ? (
-                      <img src={cameraCaptured} alt="Captured" className="story-camera-capture-preview" />
-                    ) : (
-                      <video src={cameraCaptured} className="story-camera-capture-preview" autoPlay loop playsInline muted />
-                    )}
-                  </div>
-                  <div className="story-camera-review-actions">
-                    <button className="story-camera-retake-btn" onClick={discardCameraCapture}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                      <span>Retake</span>
-                    </button>
-                    <button className="story-camera-use-btn" onClick={useCameraCapture}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                      <span>Use {cameraCapturedType === 'video' ? 'Video' : 'Photo'}</span>
-                    </button>
-                  </div>
+                  {cameraCapturedType === 'image' ? (
+                    <img src={cameraCaptured} alt="Captured" className="wa-story-cam-feed" />
+                  ) : (
+                    <video 
+                      key={cameraCaptured}
+                      src={cameraCaptured} 
+                      className="wa-story-cam-feed" 
+                      autoPlay 
+                      loop 
+                      playsInline 
+                    />
+                  )}
                 </>
               )}
             </div>
-          )}
 
-          {createStoryTab !== 'camera' && (
-            <button
-              className="story-create-post-btn"
-              disabled={!canPost}
-              onClick={handleCreateStory}
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              <span>Share to Story</span>
-            </button>
-          )}
-        </div>
+            {/* Top bar on camera */}
+            <div className="wa-story-topbar wa-story-topbar-cam">
+              <button 
+                className="wa-story-close-btn" 
+                onClick={closeCreateModal}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+              <div className="wa-story-topbar-actions">
+                {!cameraCaptured && (
+                  <button className="wa-story-icon-btn" onClick={flipCamera} title="Flip camera">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/>
+                      <path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Camera bottom controls */}
+            <div className="wa-story-cam-bottom">
+              {!cameraCaptured ? (
+                <>
+                  {/* Gallery button */}
+                  <button className="wa-story-gallery-btn" onClick={() => storyMediaInputRef.current?.click()} title="Gallery">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                  </button>
+
+                  {/* Shutter / Record */}
+                  <div className="wa-story-shutter-area">
+                    {!cameraRecording ? (
+                      <button 
+                        className={`wa-story-shutter ${cameraMode === 'video' ? 'video-mode' : ''}`} 
+                        onClick={cameraMode === 'video' ? startRecording : capturePhoto} 
+                        id="story-shutter-btn"
+                      >
+                        <div className={`wa-story-shutter-ring ${cameraMode === 'video' ? 'video-mode' : ''}`}>
+                          <div className={`wa-story-shutter-inner ${cameraMode === 'video' ? 'video-mode' : ''}`} />
+                        </div>
+                      </button>
+                    ) : (
+                      <button className="wa-story-shutter recording" onClick={stopRecording}>
+                        <div className="wa-story-shutter-ring recording">
+                          <div className="wa-story-shutter-stop" />
+                        </div>
+                      </button>
+                    )}
+                    {!cameraRecording && cameraMode === 'photo' && (
+                      <span className="wa-story-shutter-hint">Tap for photo</span>
+                    )}
+                    {!cameraRecording && cameraMode === 'video' && (
+                      <span className="wa-story-shutter-hint">Tap to record</span>
+                    )}
+                  </div>
+
+                  {/* Photo/Video Mode Toggle - since flip is at top */}
+                  {!cameraRecording && (
+                    <button 
+                      className="wa-story-icon-btn" 
+                      onClick={() => setCameraMode(prev => prev === 'photo' ? 'video' : 'photo')} 
+                      title={cameraMode === 'photo' ? "Switch to Video" : "Switch to Photo"}
+                    >
+                      {cameraMode === 'photo' ? (
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                        </svg>
+                      ) : (
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </>
+              ) : (
+                /* Review captured media */
+                <div className="wa-story-review-bar">
+                  <button className="wa-story-review-btn discard" onClick={discardCameraCapture}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                    <span>Retake</span>
+                  </button>
+                  <button className="wa-story-review-btn accept" onClick={() => {
+                    useCameraCapture();
+                    // After using the capture, if it's a photo, go to photo tab, else video
+                    // useCameraCapture already handles this
+                  }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                    <span>Use {cameraCapturedType === 'video' ? 'Video' : 'Photo'}</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Mode switcher at bottom */}
+              {!cameraCaptured && !cameraRecording && (
+                <div className="wa-story-mode-switcher cam-mode">
+                  <button className={`wa-story-mode-btn ${createStoryTab === 'text' ? 'active' : ''}`} onClick={() => setCreateStoryTab('text')}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
+                    </svg>
+                    <span>Text</span>
+                  </button>
+                  <button className={`wa-story-mode-btn ${createStoryTab === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                    </svg>
+                    <span>Camera</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ═══ PHOTO / VIDEO REVIEW MODE ═══ */}
+        {(createStoryTab === 'photo' || createStoryTab === 'video') && (
+          <div className="wa-story-media-mode">
+            {/* Top bar */}
+            <div className="wa-story-topbar wa-story-topbar-cam">
+              <button 
+                className="wa-story-close-btn" 
+                onClick={createStoryMedia ? removeStoryMedia : closeCreateModal} 
+                title={createStoryMedia ? "Discard media" : "Close"}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  {createStoryMedia ? (
+                    <path d="M19 12H5M12 19l-7-7 7-7" />
+                  ) : (
+                    <><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></>
+                  )}
+                </svg>
+              </button>
+            </div>
+
+            {/* Media Preview Area */}
+            <div className="wa-story-media-viewport">
+              {!createStoryMedia ? (
+                <button 
+                  className="wa-story-media-empty"
+                  onClick={() => createStoryTab === 'photo' ? storyMediaInputRef.current?.click() : storyVideoInputRef.current?.click()}
+                >
+                  <div className="wa-story-media-empty-icon">
+                    {createStoryTab === 'photo' ? (
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
+                      </svg>
+                    ) : (
+                      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                      </svg>
+                    )}
+                  </div>
+                  <span className="wa-story-media-empty-title">
+                    Tap to select {createStoryTab === 'photo' ? 'a photo' : 'a video'}
+                  </span>
+                  <span className="wa-story-media-empty-hint">Choose from your gallery</span>
+                </button>
+              ) : (
+                <div className="wa-story-media-full">
+                  {createStoryMediaType === 'video' ? (
+                    <video src={createStoryMedia} className="wa-story-media-content" autoPlay loop playsInline muted />
+                  ) : (
+                    <img src={createStoryMedia} alt="Story preview" className="wa-story-media-content" />
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Caption + Send */}
+            <div className="wa-story-media-bottom">
+              <div className="wa-story-caption-row">
+                <input
+                  className="wa-story-caption-input"
+                  placeholder="Add a caption..."
+                  value={createStoryCaption}
+                  onChange={e => setCreateStoryCaption(e.target.value)}
+                  maxLength={100}
+                />
+                <button
+                  className="wa-story-send-fab small"
+                  disabled={!canPost}
+                  onClick={handleCreateStory}
+                >
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -1899,7 +2958,7 @@ function MessagesContent() {
               </div>
               <h2 className="msg-future-title">Block {activeConversation.user.name}?</h2>
               <p className="msg-future-desc">
-                They will no longer be able to message you or find your profile. You can unblock them anytime in settings.
+                They will no longer be able to find your profile or see your messages. The conversation and stories will be hidden from both of you until you unblock them.
               </p>
               <div style={{ display: 'flex', gap: '12px', width: '100%', marginTop: '12px' }}>
                 <button 
@@ -1922,13 +2981,56 @@ function MessagesContent() {
         </div>
       )}
 
-      {showMuteToast && (
+      {showDeleteConfirm && activeConversation && (
+        <div className="msg-future-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
+            <div className="msg-future-handle" />
+            <div className="msg-future-content">
+              <div className="msg-future-icon-wrapper" style={{ color: '#EF4444', marginBottom: '8px' }}>
+                <div className="msg-future-icon-glow" style={{ backgroundColor: '#EF4444' }} />
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </div>
+              <h2 className="msg-future-title">Delete Chat?</h2>
+              <p className="msg-future-desc">
+                This will permanently remove this conversation from your list. This action cannot be undone.
+              </p>
+              <div style={{ display: 'flex', gap: '12px', width: '100%', marginTop: '12px' }}>
+                <button 
+                  className="msg-future-btn" 
+                  style={{ background: 'var(--surface-2)', color: 'var(--text-primary)', boxShadow: 'none' }}
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button 
+                  className="msg-future-btn" 
+                  style={{ background: '#EF4444', boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)' }}
+                  onClick={handleDeleteChat}
+                >
+                  <span>Delete</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMuteToast && activeConversation && (
         <div className="msg-mute-toast">
           <div className="msg-mute-toast-content">
              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+               {activeConversation.muted ? (
+                 <path d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6" />
+               ) : (
+                 <>
+                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                   <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                 </>
+               )}
              </svg>
-             <span>Muting features are undergoing maintenance</span>
+             <span>Chat {activeConversation.muted ? 'Muted' : 'Notifications On'}</span>
           </div>
         </div>
       )}
@@ -1945,7 +3047,7 @@ function MessagesContent() {
                 )}
               </svg>
             </div>
-            <span>Vanish Mode {activeConversation.vanishMode ? 'Enabled' : 'Disabled'}</span>
+            <span>Vanish Mode {activeConversation.vanishMode ? 'On • 1h' : 'Off'}</span>
           </div>
         </div>
       )}
@@ -1961,7 +3063,215 @@ function MessagesContent() {
           </div>
         </div>
       )}
+
+      {/* Delete Chat Toast */}
+
+      {showDeleteToast && (
+        <div className="msg-mute-toast" style={{ background: '#EF4444' }}>
+          <div className="msg-mute-toast-content">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            <span>Conversation deleted</span>
+          </div>
+        </div>
+      )}
+
+      {/* Image Lightbox */}
+      {lightboxMedia && (
+        <div 
+          ref={lightboxRef}
+          className={`msg-lightbox-overlay ${lightboxControlsVisible ? 'controls-visible' : 'controls-hidden'}`}
+          onClick={() => {
+            setLightboxControlsVisible(!lightboxControlsVisible);
+            setShowLightboxMenu(false);
+          }}
+        >
+
+
+          {/* Header (HUD) */}
+          <div className="msg-lightbox-header" onClick={(e) => e.stopPropagation()}>
+            <div className="msg-lightbox-header-left">
+              <button className="msg-lightbox-header-btn" onClick={() => {
+                setLightboxMedia(null);
+                setLightboxRotation(0);
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              </button>
+
+              <div className="msg-lightbox-meta">
+                <span className="msg-lightbox-sender">{lightboxMedia.sender}</span>
+                <span className="msg-lightbox-time">{lightboxMedia.time}</span>
+              </div>
+            </div>
+            <div className="msg-lightbox-header-right">
+              {/* Rotate (Direct Access) */}
+              <button className="msg-lightbox-header-btn" title="Rotate" onClick={(e) => {
+                e.stopPropagation();
+                setLightboxRotation(prev => {
+                  const currentMod = prev % 360;
+                  if (currentMod === 0) return prev + 90;
+                  if (currentMod === 90) return prev + 180; // Skip 180, go to 270
+                  if (currentMod === 270) return prev + 90; // Back to 0 (360)
+                  return prev + 90;
+                });
+              }}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              </button>
+
+
+
+
+              {/* Hamburger Menu */}
+
+              <div className="msg-lightbox-menu-wrapper">
+                <button className="msg-lightbox-header-btn" onClick={() => setShowLightboxMenu(!showLightboxMenu)}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                </button>
+                
+                {showLightboxMenu && (
+                  <div className="msg-lightbox-dropdown">
+                    <button className="msg-lightbox-dropdown-item" onClick={() => {
+                      setShowForwardModal(true);
+                      setShowLightboxMenu(false);
+                    }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polyline points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                      <span>Forward</span>
+                    </button>
+
+                    <a href={lightboxMedia.url} download className="msg-lightbox-dropdown-item">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                      <span>Download</span>
+                    </a>
+                    <button 
+                      className="msg-lightbox-dropdown-item danger" 
+                      onClick={async () => {
+                        if (confirm('Delete this photo for everyone?')) {
+                          const ok = await deleteMessage(lightboxMedia.msgId);
+                          if (ok) {
+                            setLightboxMedia(null);
+                            setLightboxRotation(0);
+                          }
+                        }
+                        setShowLightboxMenu(false);
+                      }}
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      <span>Delete</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="msg-lightbox-content">
+            {lightboxMedia.type === 'video' ? (
+              <video 
+                src={lightboxMedia.url} 
+                controls 
+                autoPlay 
+                controlsList="nodownload noplaybackrate nofullscreen"
+                disablePictureInPicture
+                playsInline
+
+                className="msg-lightbox-video"
+                style={{ 
+                  transform: `rotate(${lightboxRotation}deg)`,
+                  maxHeight: (lightboxRotation % 180 !== 0) ? '100vw' : '100vh',
+                  maxWidth: (lightboxRotation % 180 !== 0) ? '100vh' : '100vw'
+                }}
+              />
+
+            ) : (
+              <img 
+                src={lightboxMedia.url} 
+                alt="Full screen" 
+                className="msg-lightbox-img" 
+                style={{ 
+                  transform: `rotate(${lightboxRotation}deg)`,
+                  maxHeight: (lightboxRotation % 180 !== 0) ? '100vw' : '100vh',
+                  maxWidth: (lightboxRotation % 180 !== 0) ? '100vh' : '100vw'
+                }}
+              />
+            )}
+          </div>
+
+        </div>
+      )}
+
+
+      {/* Forward Modal */}
+      {showForwardModal && (
+        <div className="msg-modal-overlay" onClick={() => setShowForwardModal(false)}>
+          <div className="msg-forward-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="msg-forward-header">
+              <h3>Forward to</h3>
+              <button className="msg-forward-close" onClick={() => setShowForwardModal(false)}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            
+            <div className="msg-forward-search">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input 
+                type="text" 
+                placeholder="Search..." 
+                value={forwardSearch}
+                onChange={(e) => setForwardSearch(e.target.value)}
+              />
+            </div>
+
+            <div className="msg-forward-list">
+              {conversations
+                .filter(c => c.user.name.toLowerCase().includes(forwardSearch.toLowerCase()))
+                .map(conv => (
+                  <div key={conv.id} className="msg-forward-item">
+                    <div className="msg-forward-user">
+                      <div className="msg-forward-avatar" style={{ background: 'var(--accent-gradient)' }}>
+                        {conv.user.profilePicture ? (
+                          <img src={conv.user.profilePicture} alt="" />
+                        ) : conv.user.avatar}
+                      </div>
+                      <span className="msg-forward-name">{conv.user.name}</span>
+                    </div>
+                    <button 
+                      className="msg-forward-send-btn"
+                      onClick={async () => {
+                        if (!lightboxMedia) return;
+                        await dbSendMessage({
+                          conversationId: conv.id,
+                          senderId: currentUserId,
+                          text: 'Forwarded a photo',
+                          type: 'image',
+                          attachment: lightboxMedia.url
+                        });
+
+                        setShowForwardSuccess(true);
+                        setTimeout(() => setShowForwardSuccess(false), 2000);
+                      }}
+                    >
+                      Send
+                    </button>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showForwardSuccess && (
+        <div className="msg-forward-toast">
+          <div className="msg-forward-toast-content">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Sent successfully</span>
+          </div>
+        </div>
+      )}
+
     </div>
+
+
   );
 }
 

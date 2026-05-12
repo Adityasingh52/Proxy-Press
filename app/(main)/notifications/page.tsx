@@ -2,13 +2,18 @@
 
 import { Notification } from '@/lib/data';
 import { useNotifications } from '@/lib/NotificationsContext';
+import { respondToFollowRequest } from '@/lib/actions';
+import { useState } from 'react';
 
 const notifConfig: Record<string, { emoji: string; color: string; bg: string }> = {
-  like:    { emoji: '❤️', color: '#EF4444', bg: '#FEE2E2' },
-  comment: { emoji: '💬', color: '#2563EB', bg: '#DBEAFE' },
-  mention: { emoji: '@',  color: '#8B5CF6', bg: '#EDE9FE' },
-  alert:   { emoji: '🔔', color: '#F59E0B', bg: '#FEF3C7' },
-  follow:  { emoji: '👤', color: '#10B981', bg: '#D1FAE5' },
+  like:           { emoji: '❤️', color: '#EF4444', bg: '#FEE2E2' },
+  comment:        { emoji: '💬', color: '#2563EB', bg: '#DBEAFE' },
+  mention:        { emoji: '@',  color: '#8B5CF6', bg: '#EDE9FE' },
+  alert:          { emoji: '🔔', color: '#F59E0B', bg: '#FEF3C7' },
+  follow:         { emoji: '👤', color: '#10B981', bg: '#D1FAE5' },
+  follow_request: { emoji: '📩', color: '#8B5CF6', bg: '#EDE9FE' },
+  follow_accept:  { emoji: '✅', color: '#10B981', bg: '#D1FAE5' },
+  post:           { emoji: '📄', color: '#6366F1', bg: '#EEF2FF' },
 };
 
 export default function NotificationsPage() {
@@ -61,6 +66,40 @@ export default function NotificationsPage() {
           <span style={{ fontSize: '11px', color: 'var(--text-subtle)', marginTop: '4px', display: 'block' }}>
             {n.timeAgo}
           </span>
+          {n.type === 'follow_request' && (
+            <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const requestId = n.id.replace('ntf-frq-', '');
+                  await respondToFollowRequest(requestId, true);
+                  dismiss(n.id);
+                }}
+                style={{
+                  padding: '6px 16px', borderRadius: '8px', border: 'none',
+                  background: 'var(--primary)', color: '#fff',
+                  fontSize: '13px', fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Confirm
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const requestId = n.id.replace('ntf-frq-', '');
+                  await respondToFollowRequest(requestId, false);
+                  dismiss(n.id);
+                }}
+                style={{
+                  padding: '6px 16px', borderRadius: '8px', border: '1px solid var(--border)',
+                  background: 'var(--surface-2)', color: 'var(--text-primary)',
+                  fontSize: '13px', fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Unread dot */}

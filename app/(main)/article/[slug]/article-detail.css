@@ -1,0 +1,195 @@
+/* ─────────────────────────────────────────
+   ARTICLE DETAIL – FIXED HEADER
+   News-app style sticky header with frosted
+   glass, back nav, title reveal & actions
+───────────────────────────────────────── */
+
+.article-detail-header {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  height: 52px;
+  background: rgba(var(--surface-rgb), 0.72);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid transparent;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  margin-bottom: 20px;
+}
+
+.article-detail-header--scrolled {
+  background: rgba(var(--surface-rgb), 0.92);
+  border-bottom-color: var(--border);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.article-detail-header__inner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 8px;
+}
+
+/* ── Back Button ── */
+.article-detail-header__back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.article-detail-header__back:hover {
+  background: var(--surface-hover);
+  transform: scale(1.05);
+}
+
+.article-detail-header__back:active {
+  transform: scale(0.92);
+}
+
+/* ── Center Title / Category ── */
+.article-detail-header__center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.article-detail-header__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+  letter-spacing: -0.2px;
+}
+
+.article-detail-header__title--visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.article-detail-header__category {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 12px;
+  border-radius: 100px;
+  white-space: nowrap;
+  animation: articleHeaderFadeIn 0.3s ease;
+}
+
+/* ── Action Buttons ── */
+.article-detail-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.article-detail-header__action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.article-detail-header__action-btn:hover {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+
+.article-detail-header__action-btn:active {
+  transform: scale(0.88);
+}
+
+.article-detail-header__action-btn--active {
+  color: var(--primary);
+}
+
+/* ── Animation ── */
+@keyframes articleHeaderFadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ─────────────────────────────────────────
+   MOBILE RESPONSIVENESS
+───────────────────────────────────────── */
+@media (max-width: 768px) {
+  .article-detail-header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    margin: 0;
+    border-radius: 0;
+    height: 56px;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  /* Push article content below fixed header */
+  #article-page {
+    padding-top: calc(56px + env(safe-area-inset-top) + 8px);
+  }
+
+  .article-detail-header__inner {
+    padding: 0 12px;
+  }
+
+  .article-detail-header__title {
+    font-size: 13px;
+  }
+}
+
+/* ─────────────────────────────────────────
+   DARK MODE REFINEMENTS
+───────────────────────────────────────── */
+.dark .article-detail-header {
+  background: rgba(var(--surface-rgb), 0.65);
+}
+
+.dark .article-detail-header--scrolled {
+  background: rgba(var(--surface-rgb), 0.82);
+  box-shadow: 0 1px 12px rgba(0, 0, 0, 0.25);
+}
+
+.dark .article-detail-header__back {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dark .article-detail-header__back:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.dark .article-detail-header__action-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

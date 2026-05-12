@@ -1,54 +1,123 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { posts } from '@/lib/data';
-import type { Category } from '@/lib/data';
+import { useState, useMemo, useEffect } from 'react';
+import type { Category, Post } from '@/lib/data';
 import PostCard from './PostCard';
 import CategoryFilters from './CategoryFilters';
+import { getInitialData, getCurrentUser } from '@/lib/actions';
 
 export default function HomeFeed() {
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
+  const [posts, setPosts] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const user = await getCurrentUser();
+        const data = await getInitialData(user?.id);
+        
+        if (data.posts) {
+          const adaptedPosts = data.posts.map((p: any) => ({
+            ...p,
+            timeAgo: p.publishedAt ? formatTimeAgo(p.publishedAt) : 'Recently',
+            isLiked: Array.isArray(p.likesList) ? p.likesList.some((l: any) => l.userId === user?.id) : false,
+          }));
+          setPosts(adaptedPosts);
+        }
+      } catch (err) {
+        console.error('Failed to load posts from DB:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    loadData();
+  }, []);
 
   const filteredPosts = useMemo(() => {
     if (activeCategory === 'All') return posts;
     return posts.filter(post => post.category === activeCategory);
-  }, [activeCategory]);
+  }, [activeCategory, posts]);
+
+  // Split into hero (first post with image) and rest
+  const heroPost = filteredPosts.length > 0 && filteredPosts[0].imageUrl
+    ? filteredPosts[0]
+    : null;
+  const remainingPosts = heroPost
+    ? filteredPosts.slice(1)
+    : filteredPosts;
 
   return (
     <div className="feed-container" id="home-feed">
-      {/* Category filters replaced StoriesRow */}
+      {/* Category filters */}
       <CategoryFilters 
         activeCategory={activeCategory} 
         onCategoryChange={setActiveCategory} 
       />
 
-      {/* Post feed */}
-      <div id="posts-feed">
-        {filteredPosts.map((post, idx) => (
-          <PostCard key={post.id} post={post} index={idx} />
+      {/* News feed */}
+      <div id="posts-feed" style={{ paddingTop: '4px' }}>
+        {/* Hero card */}
+        {heroPost && (
+          <PostCard key={heroPost.id} post={heroPost} index={0} variant="hero" />
+        )}
+
+        {/* Section header for remaining posts */}
+        {remainingPosts.length > 0 && (
+          <div className="news-section-header">
+            <span className="news-section-title">
+              {activeCategory === 'All' ? 'Latest' : activeCategory}
+            </span>
+            <span className="news-section-count">
+              {remainingPosts.length} {remainingPosts.length === 1 ? 'story' : 'stories'}
+            </span>
+          </div>
+        )}
+
+        {/* Compact list */}
+        {remainingPosts.map((post, idx) => (
+          <PostCard key={post.id} post={post} index={idx + 1} variant="compact" />
         ))}
         
-        {filteredPosts.length === 0 && (
+        {!isLoading && filteredPosts.length === 0 && (
           <div style={{ 
             textAlign: 'center', 
             padding: '60px 20px', 
             color: 'var(--text-muted)' 
           }}>
-            <div style={{ fontSize: '40px', marginBottom: '16px' }}>📭</div>
-            <p style={{ fontWeight: 600 }}>No posts found in this category</p>
+            <div style={{ fontSize: '48px', marginBottom: '16px', opacity: 0.7 }}>📭</div>
+            <p style={{ fontWeight: 700, fontSize: '16px', marginBottom: '6px' }}>No stories yet</p>
+            <p style={{ fontWeight: 400, fontSize: '13px', color: 'var(--text-subtle)' }}>
+              {activeCategory === 'All' 
+                ? 'Be the first to publish a story'
+                : `No stories in ${activeCategory} category`}
+            </p>
           </div>
         )}
       </div>
 
-      {/* Load more indicator */}
-      {filteredPosts.length > 0 && (
-        <div style={{ textAlign: 'center', padding: '4px 0 0', color: 'var(--text-subtle)', fontSize: '13px' }}>
+      {/* Loading */}
+      {isLoading && (
+        <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-subtle)', fontSize: '13px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
             <div className="spinner" />
-            Loading more posts...
+            Loading stories...
           </div>
         </div>
       )}
     </div>
   );
+}
+
+
+function formatTimeAgo(dateString: string) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+  
+  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
+  if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)}d ago`;
+  return date.toLocaleDateString();
 }

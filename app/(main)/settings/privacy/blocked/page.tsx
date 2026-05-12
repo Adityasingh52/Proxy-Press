@@ -1,11 +1,13 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import '../../settings.css';
+import { getBlockedUsers, unblockUser } from '@/lib/actions';
 
 export default function BlockedAccountsPage() {
-  const [blockedUsers, setBlockedUsers] = useState<{id: string, name: string}[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const main = document.getElementById('main-content');
@@ -13,39 +15,31 @@ export default function BlockedAccountsPage() {
       main.classList.add('no-top-padding');
     }
 
-    const savedIds = localStorage.getItem('blockedUsers');
-    const savedNames = localStorage.getItem('blockedUserNames');
-    
-    if (savedIds && savedNames) {
+    async function loadBlocked() {
       try {
-        const rawIds = JSON.parse(savedIds) as string[];
-        const ids = Array.from(new Set(rawIds)); // Deduplicate
-        const names = JSON.parse(savedNames) as Record<string, string>;
-        const list = ids.map(id => ({ id, name: names[id] || id }));
-        setBlockedUsers(list);
-      } catch (e) {
-        console.error('Error loading blocked users', e);
+        const users = await getBlockedUsers();
+        setBlockedUsers(users);
+      } catch (err) {
+        console.error('Failed to load blocked users:', err);
+      } finally {
+        setIsLoading(false);
       }
     }
+    loadBlocked();
 
     return () => {
       if (main) main.classList.remove('no-top-padding');
     };
   }, []);
 
-  const handleUnblock = (userId: string) => {
-    const newBlocked = blockedUsers.filter(u => u.id !== userId);
-    setBlockedUsers(newBlocked);
-    
-    const ids = newBlocked.map(u => u.id);
-    localStorage.setItem('blockedUsers', JSON.stringify(ids));
-    
-    // Clean up names too if needed
-    const savedNames = localStorage.getItem('blockedUserNames');
-    if (savedNames) {
-      const names = JSON.parse(savedNames);
-      delete names[userId];
-      localStorage.setItem('blockedUserNames', JSON.stringify(names));
+  const handleUnblock = async (userId: string) => {
+    try {
+      const result = await unblockUser(userId);
+      if (result.success) {
+        setBlockedUsers(prev => prev.filter(u => u.id !== userId));
+      }
+    } catch (err) {
+      console.error('Failed to unblock user:', err);
     }
   };
 
