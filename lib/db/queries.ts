@@ -214,7 +214,7 @@ export async function getConversations(userId: string) {
     .filter(conv => {
       const otherParticipant = conv.participants.find(p => p.userId !== userId);
       if (!otherParticipant) return true;
-      return !blockedUserIds.includes(otherParticipant.userId);
+      return !blockedUserIds.includes(otherParticipant.userId as string);
     })
     .map(conv => {
       const unreadCount = conv.messages.filter(m => !m.seen && m.senderId !== userId).length;
@@ -280,7 +280,7 @@ export async function getStories(userId?: string) {
       if (userId && excludedUserIds.includes(s.userId)) return false;
       
       // Privacy check
-      if (s.user.isPrivate) {
+      if ((s.user as any).isPrivate) {
         if (userId && (followingIds.includes(s.userId) || s.userId === userId)) {
           return true;
         }

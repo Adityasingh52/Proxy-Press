@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { uploadMedia, createPost, updatePost, getPostById, getCurrentUser } from '@/lib/actions';
 import { categories } from '@/lib/data';
@@ -13,7 +13,7 @@ const categoryEmojis: Record<string, string> = {
   News: '📰', "College Daily Update": '🗓️', Others: '✨',
 };
 
-export default function CreatePostPage() {
+function CreatePostContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('edit');
@@ -971,5 +971,17 @@ export default function CreatePostPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CreatePostPage() {
+  return (
+    <Suspense fallback={
+      <div className="feed-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+        <div className="spinner" />
+      </div>
+    }>
+      <CreatePostContent />
+    </Suspense>
   );
 }

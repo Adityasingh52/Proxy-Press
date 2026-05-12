@@ -15,7 +15,15 @@ export default function AboutSettingsPage() {
     };
   }, []);
 
-  const aboutItems = [
+  interface AboutItem {
+    label: string;
+    sub: string;
+    href: string;
+    icon: React.ReactNode;
+    isDisabled?: boolean;
+  }
+
+  const aboutItems: AboutItem[] = [
     {
       label: 'App Details',
       sub: 'Story, features and uniqueness',

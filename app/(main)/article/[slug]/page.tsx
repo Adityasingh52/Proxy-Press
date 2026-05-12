@@ -445,7 +445,7 @@ export default function ArticleDetailPage({ params }: { params: Promise<{ slug: 
 
       {/* Article body */}
       <div className="article-body" id="article-body" style={{ padding: '0 8px' }}>
-        {paragraphs.map((para, i) => {
+        {paragraphs.map((para: string, i: number) => {
           if (para.startsWith('## ')) {
             return <h2 key={i}>{para.replace('## ', '')}</h2>;
           }

@@ -75,6 +75,7 @@ interface UserStory {
 interface Conversation {
   id: string;
   user: User;
+  lastMessage: string;
   lastMessageTime: string;
   rawLastMessageTime?: string;
   unreadCount: number;
@@ -612,7 +613,7 @@ function MessagesContent() {
         setConversations(prev => prev.map(c => 
           c.id === activeChat ? { 
             ...c, 
-            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.messageId as string, status: 'sent' } : m)
+            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.id as string, status: 'sent' } : m)
           } : c
         ));
       }
@@ -2065,7 +2066,8 @@ function MessagesContent() {
                                  url: msg.attachment!,
                                  msgId: msg.id,
                                  sender: isMine ? 'You' : user.name,
-                                 time: msg.timestamp
+                                 time: msg.timestamp,
+                                 type: 'image'
                                });
                                setLightboxControlsVisible(true);
                              }}
@@ -2632,7 +2634,7 @@ function MessagesContent() {
                   </svg>
                   <span>Text</span>
                 </button>
-                <button className={`wa-story-mode-btn ${createStoryTab === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
+                <button className={`wa-story-mode-btn ${(createStoryTab as string) === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
                   </svg>
@@ -2802,13 +2804,13 @@ function MessagesContent() {
               {/* Mode switcher at bottom */}
               {!cameraCaptured && !cameraRecording && (
                 <div className="wa-story-mode-switcher cam-mode">
-                  <button className={`wa-story-mode-btn ${createStoryTab === 'text' ? 'active' : ''}`} onClick={() => setCreateStoryTab('text')}>
+                  <button className={`wa-story-mode-btn ${(createStoryTab as string) === 'text' ? 'active' : ''}`} onClick={() => setCreateStoryTab('text')}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M4 7V4h16v3" /><path d="M9 20h6" /><path d="M12 4v16" />
                     </svg>
                     <span>Text</span>
                   </button>
-                  <button className={`wa-story-mode-btn ${createStoryTab === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
+                  <button className={`wa-story-mode-btn ${(createStoryTab as string) === 'camera' ? 'active' : ''}`} onClick={() => setCreateStoryTab('camera')}>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
                     </svg>
@@ -3147,7 +3149,7 @@ function MessagesContent() {
                       className="msg-lightbox-dropdown-item danger" 
                       onClick={async () => {
                         if (confirm('Delete this photo for everyone?')) {
-                          const ok = await deleteMessage(lightboxMedia.msgId);
+                          const ok = await dbDeleteMessage(lightboxMedia.msgId);
                           if (ok) {
                             setLightboxMedia(null);
                             setLightboxRotation(0);
