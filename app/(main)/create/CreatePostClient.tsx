@@ -220,7 +220,12 @@ export default function CreatePostClient() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: mode, width: { ideal: 1080 }, height: { ideal: 1920 } },
+        video: { 
+          facingMode: mode,
+          aspectRatio: { ideal: 0.5625 }, // 9:16
+          width: { ideal: 1080 },
+          height: { ideal: 1920 }
+        },
         audio: true 
       });
       setCameraStream(stream);
@@ -854,169 +859,165 @@ export default function CreatePostClient() {
             position: 'fixed', inset: 0, zIndex: 9999,
             background: '#000', display: 'flex', flexDirection: 'column',
             animation: 'fade-in 0.3s ease',
-            color: '#fff'
+            overflow: 'hidden'
           }}
         >
-          {/* Main Viewport */}
-          <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              playsInline 
-              muted
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-            
-            {/* Camera Overlays */}
+          {/* Full Screen Video Background */}
+          <video 
+            ref={videoRef} 
+            autoPlay 
+            playsInline 
+            muted
+            style={{ 
+              position: 'absolute',
+              inset: 0,
+              width: '100%', 
+              height: '100%', 
+              objectFit: 'contain',
+              zIndex: 1
+            }}
+          />
+          
+          {/* Camera Frame UI / Vignette */}
+          <div style={{ 
+            position: 'absolute', inset: 0, 
+            background: 'radial-gradient(circle, transparent 60%, rgba(0,0,0,0.4) 100%)',
+            pointerEvents: 'none',
+            zIndex: 2
+          }} />
+
+          {/* UI Overlays */}
+          <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', height: '100%' }}>
+            {/* Top Bar */}
             <div style={{ 
-              position: 'absolute', inset: 0, 
-              background: 'linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, transparent 20%, transparent 80%, rgba(0,0,0,0.6) 100%)',
-              pointerEvents: 'none'
-            }} />
-            
-            {/* Top Controls */}
-            <div style={{ 
-              position: 'absolute', top: '24px', left: '20px', right: '20px',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-              zIndex: 10
+              padding: '24px 24px 0',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center'
             }}>
-              <button 
-                onClick={stopCamera}
-                disabled={isRecording}
-                style={{ 
-                  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.2)', borderRadius: '50%',
-                  width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', cursor: 'pointer', transition: 'all 0.2s',
-                  opacity: isRecording ? 0 : 1
-                }}
-              >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-                <div style={{ 
-                  background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
-                  padding: '6px 14px', borderRadius: '20px', color: '#fff',
-                  fontSize: '12px', fontWeight: 700, letterSpacing: '0.05em',
-                  border: '1px solid rgba(255,255,255,0.1)'
-                }}>
-                  {facingMode === 'user' ? 'FRONT' : 'BACK'}
-                </div>
-                {isRecording && (
-                  <div style={{
-                    background: 'rgba(239, 68, 68, 0.9)', padding: '6px 14px', borderRadius: '8px',
-                    color: '#fff', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
-                    boxShadow: '0 4px 15px rgba(239, 68, 68, 0.4)'
-                  }}>
-                    <div style={{
-                      width: '10px', height: '10px', borderRadius: '50%', background: '#fff',
-                      animation: 'pulse 1s infinite'
-                    }} />
-                    {formatTime(recordingTime)}
-                  </div>
-                )}
+              <div style={{ 
+                background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)',
+                padding: '6px 14px', borderRadius: '20px', color: '#fff',
+                fontSize: '12px', fontWeight: 600, letterSpacing: '0.05em'
+              }}>
+                LIVE · {facingMode === 'user' ? 'Front' : 'Back'}
               </div>
-
               <button 
                 onClick={toggleCamera}
                 disabled={isRecording}
                 style={{ 
                   background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(10px)',
                   border: '1px solid rgba(255,255,255,0.2)', borderRadius: '50%',
-                  width: '44px', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: '#fff', cursor: 'pointer', transition: 'all 0.2s',
-                  opacity: isRecording ? 0 : 1
+                  opacity: isRecording ? 0.3 : 1
                 }}
+                title="Flip Camera"
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
                 </svg>
               </button>
             </div>
 
-            {/* Bottom Actions Container */}
-            <div style={{ 
-              position: 'absolute', bottom: 0, left: 0, right: 0,
-              padding: '40px 20px 60px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '30px',
-              zIndex: 10
-            }}>
-              {/* Guidance Message */}
-              <div style={{ 
-                fontSize: '13px', fontWeight: 500, opacity: 0.8,
-                textAlign: 'center', textShadow: '0 1px 4px rgba(0,0,0,0.8)'
+            {isRecording && (
+              <div style={{
+                marginTop: '40px', alignSelf: 'center',
+                background: 'rgba(239, 68, 68, 0.85)', padding: '6px 14px', borderRadius: '8px',
+                color: '#fff', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px',
+                boxShadow: '0 4px 15px rgba(239, 68, 68, 0.4)'
               }}>
-                {isRecording ? 'Recording...' : cameraMode === 'video' ? 'TAP TO RECORD VIDEO' : 'TAP TO TAKE PHOTO'}
+                <div style={{
+                  width: '10px', height: '10px', borderRadius: '50%', background: '#fff',
+                  animation: 'pulse 1s infinite'
+                }} />
+                {formatTime(recordingTime)}
+              </div>
+            )}
+            
+            <div style={{ flex: 1 }} />
+
+            {/* Bottom Controls Area */}
+            <div 
+              style={{ 
+                height: '240px', 
+                background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)', 
+                display: 'flex', 
+                flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                gap: '24px',
+                paddingBottom: '20px'
+              }}
+            >
+              <div style={{ color: '#fff', fontSize: '13px', opacity: 0.8, textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                {isRecording ? 'Recording video...' : cameraMode === 'video' ? 'Tap red button to record' : 'Align post subject within the frame'}
               </div>
 
-              {/* Shutter Controls */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '50px' }}>
-                {/* Switch to Photo/Video */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', width: '100%', padding: '0 40px' }}>
                 <button 
-                  onClick={() => setCameraMode('photo')}
+                  className="btn" 
+                  onClick={stopCamera}
                   disabled={isRecording}
                   style={{ 
-                    color: cameraMode === 'photo' ? '#fff' : 'rgba(255,255,255,0.5)',
-                    background: 'none', border: 'none', fontSize: '14px', fontWeight: 700,
-                    cursor: 'pointer', transition: 'all 0.2s',
-                    textDecoration: cameraMode === 'photo' ? 'underline' : 'none',
-                    textUnderlineOffset: '6px'
+                    color: '#fff', background: 'rgba(255,255,255,0.15)', 
+                    width: '56px', height: '56px', borderRadius: '50%', 
+                    padding: 0, justifyContent: 'center', opacity: isRecording ? 0.3 : 1,
+                    backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)'
                   }}
                 >
-                  PHOTO
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
                 </button>
 
-                {/* Main Shutter */}
                 <button 
                   onClick={cameraMode === 'video' ? (isRecording ? stopRecordingCapture : startRecording) : takePhoto}
                   style={{
-                    width: '80px', height: '80px', borderRadius: '50%',
-                    background: '#fff',
-                    border: `5px solid ${isRecording ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255,255,255,0.3)'}`,
-                    padding: '6px', cursor: 'pointer', transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    width: '88px', height: '88px', borderRadius: '50%',
+                    background: cameraMode === 'video' ? (isRecording ? '#fff' : '#EF4444') : '#fff',
+                    border: `6px solid ${isRecording ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.4)'}`,
+                    padding: '4px', cursor: 'pointer', transition: 'all 0.2s',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: isRecording ? '0 0 20px rgba(239, 68, 68, 0.6)' : '0 4px 15px rgba(0,0,0,0.3)',
-                    transform: isRecording ? 'scale(1.1)' : 'scale(1)'
+                    boxShadow: isRecording ? '0 0 30px rgba(239, 68, 68, 0.6)' : '0 4px 15px rgba(0,0,0,0.3)'
                   }}
                 >
-                  {cameraMode === 'video' ? (
-                    <div style={{ 
-                      width: isRecording ? '30px' : '64px', 
-                      height: isRecording ? '30px' : '64px', 
-                      borderRadius: isRecording ? '4px' : '50%', 
-                      background: '#EF4444',
-                      transition: 'all 0.3s'
-                    }} />
+                  {cameraMode === 'video' && isRecording ? (
+                    <div style={{ width: '32px', height: '32px', borderRadius: '6px', background: '#EF4444' }} />
                   ) : (
                     <div style={{ 
                       width: '64px', height: '64px', borderRadius: '50%', 
-                      border: '2px solid rgba(0,0,0,0.1)',
-                      background: '#fff'
+                      border: '3px solid rgba(0,0,0,0.1)',
+                      background: cameraMode === 'video' ? '#EF4444' : '#fff'
                     }} />
                   )}
                 </button>
 
                 <button 
-                  onClick={() => setCameraMode('video')}
+                  className="btn"
+                  onClick={() => setCameraMode(prev => prev === 'photo' ? 'video' : 'photo')}
                   disabled={isRecording}
                   style={{ 
-                    color: cameraMode === 'video' ? '#fff' : 'rgba(255,255,255,0.5)',
-                    background: 'none', border: 'none', fontSize: '14px', fontWeight: 700,
-                    cursor: 'pointer', transition: 'all 0.2s',
-                    textDecoration: cameraMode === 'video' ? 'underline' : 'none',
-                    textUnderlineOffset: '6px'
+                    color: '#fff', background: 'rgba(255,255,255,0.15)', 
+                    width: '56px', height: '56px', borderRadius: '50%', 
+                    padding: 0, justifyContent: 'center',
+                    opacity: isRecording ? 0.3 : 1,
+                    backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)'
                   }}
+                  title={cameraMode === 'photo' ? "Switch to Video" : "Switch to Photo"}
                 >
-                  VIDEO
+                  {cameraMode === 'photo' ? (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+                    </svg>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>
+                    </svg>
+                  )}
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+
     </div>
   );
 }
