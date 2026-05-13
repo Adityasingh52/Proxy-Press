@@ -71,12 +71,13 @@ export default function MobileBottomNav() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
   
-  // Hide footer when in a DM
+  // Hide footer when in a DM or on Settings page
   const chatId = searchParams.get('chatId');
   const userId = searchParams.get('userId');
   const isInsideChat = pathname === '/messages' && (chatId || userId);
+  const isSettings = pathname.startsWith('/settings');
 
-  if (isInsideChat) return null;
+  if (isInsideChat || isSettings) return null;
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     // Instant fallback from localStorage
     if (typeof window !== 'undefined') {
