@@ -147,16 +147,18 @@ export async function getMessages(conversationId: string) {
 
 import { v2 as cloudinary } from 'cloudinary';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 /**
  * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
+  // Move config inside to prevent browser bundling issues
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
 
