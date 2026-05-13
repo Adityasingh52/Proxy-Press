@@ -6,9 +6,8 @@ import * as schema from './db/schema';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'node:crypto';
-import { eq, and, ne, or } from 'drizzle-orm';
+import { eq, and, ne, or, sql, isNotNull, lte, inArray, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
-import { sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import { withCache, redis } from './redis';
 
@@ -443,7 +442,10 @@ export async function deleteConversation(conversationId: string) {
 export async function cleanupExpiredMessages() {
   const now = new Date();
   await db.delete(schema.messages)
-    .where(sql`${schema.messages.expiresAt} IS NOT NULL AND ${schema.messages.expiresAt} <= ${now.getTime()}`);
+    .where(and(
+      isNotNull(schema.messages.expiresAt),
+      lte(schema.messages.expiresAt, now)
+    ));
 }
 
 export async function markMessagesAsSeen(conversationId: string, userId: string) {
