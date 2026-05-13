@@ -13,12 +13,12 @@
 
 .mobile-nav-container {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: space-around; /* Distribute items evenly */
+  align-items: stretch; /* Make items fill full height */
   height: 64px;
-  max-width: 500px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0; /* Remove horizontal padding to maximize tap space */
   position: relative;
 }
 
@@ -28,10 +28,19 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  height: 100%; /* Fill full height of container */
   text-decoration: none;
   color: var(--text-muted);
-  gap: 4px;
-  transition: color var(--transition-fast);
+  gap: 2px;
+  transition: all 0.2s ease;
+  -webkit-tap-highlight-color: rgba(var(--primary-rgb), 0.1);
+  cursor: pointer;
+  outline: none;
+}
+
+.mobile-nav-item:active {
+  background-color: rgba(var(--primary-rgb), 0.05);
+  transform: scale(0.95); /* Tactile feedback */
 }
 
 .mobile-nav-item.active {
