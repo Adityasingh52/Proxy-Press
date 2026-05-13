@@ -144,7 +144,7 @@ export default function MobileBottomNav() {
     loadData();
     const interval = setInterval(loadData, 15000); // Poll every 15s
     return () => clearInterval(interval);
-  }, [pathname]);
+  }, []); // Run on mount, not on every pathname change to avoid UI blocking
 
   return (
     <nav className="mobile-bottom-nav">
