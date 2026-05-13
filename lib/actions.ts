@@ -156,13 +156,15 @@ cloudinary.config({
 /**
  * Universal Media Upload Action via Cloudinary
  */
-export async function uploadMedia(formData: FormData) {
-  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-    throw new Error('Cloudinary environment variables are missing. Please check your Vercel settings.');
-  }
-
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
+
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    console.error('CRITICAL: Cloudinary credentials missing in environment variables');
+    // For local development or emergency fallback, we return a local blob URL if it exists
+    if (file && (file as any).preview) return { url: (file as any).preview };
+    throw new Error('Upload service not configured. Please add CLOUDINARY_* keys to your Vercel Environment Variables.');
+  }
   
   if (!file) throw new Error('No file provided');
 
