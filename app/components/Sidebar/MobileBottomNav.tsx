@@ -76,7 +76,17 @@ export default function MobileBottomNav() {
           import('@/lib/actions').then(m => m.getCurrentUser())
         ]);
         setUnreadCount(count);
-        if (user) setCurrentUserId(user.id);
+        if (user) {
+          setCurrentUserId(user.id);
+          // GLOBAL CACHE WARMING: Keep the self-profile hot no matter which page we are on
+          const profileData = await import('@/lib/actions').then(m => m.getProfileData(user.id));
+          if (profileData) {
+            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({
+              ...profileData,
+              timestamp: Date.now()
+            }));
+          }
+        }
       } catch (e) {
         console.error('Failed to load nav data', e);
       }

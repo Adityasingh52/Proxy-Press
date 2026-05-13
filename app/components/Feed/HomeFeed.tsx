@@ -62,37 +62,7 @@ export default function HomeFeed() {
     loadData();
   }, []);
 
-  // 3. Silent Background Pre-fetch for Profile
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        const user = await getCurrentUser();
-        if (user?.id) {
-          const profileData = await getProfileData(user.id);
-          if (profileData && typeof window !== 'undefined') {
-            // Warm up the profile cache so it loads instantly when clicked
-            const cacheData = {
-              user: {
-                ...profileData.user,
-                postsCount: profileData.posts?.length || 0,
-                statusDisplay: profileData.statusDisplay || null
-              },
-              posts: profileData.posts || [],
-              isFollowing: profileData.isFollowing || false,
-              followCounts: profileData.followCounts || { followers: 0, following: 0 },
-              timestamp: Date.now()
-            };
-            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify(cacheData));
-            console.log('Profile cache warmed up in background');
-          }
-        }
-      } catch (err) {
-        // Silently fail as this is just an optimization
-      }
-    }, 3000); // Wait 3 seconds after home load
 
-    return () => clearTimeout(timer);
-  }, []);
 
   const filteredPosts = useMemo(() => {
     if (activeCategory === 'All') return posts;
