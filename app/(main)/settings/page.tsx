@@ -224,10 +224,6 @@ export default function SettingsPage() {
                     key={i} 
                     href={(item as any).href} 
                     className={`settings-item ${isDanger ? 'settings-item-danger' : ''}`}
-                    onTouchStart={() => {
-                      router.prefetch((item as any).href);
-                      router.push((item as any).href);
-                    }}
                   >
                     {Content}
                   </Link>
