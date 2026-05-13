@@ -5,6 +5,22 @@ import Link from 'next/link';
 import '../settings.css';
 import { getBlockedUsers, getCurrentUser, updateAccountPrivacy, getFollowRequests, respondToFollowRequest, updateActivityStatus } from '@/lib/actions';
 
+interface PrivacySettings {
+  account: {
+    privateAccount: boolean;
+    activityStatus: boolean;
+  };
+  interactions: {
+    mentions: string;
+    comments: string;
+    tags: string;
+  };
+  data: {
+    personalizedAds: boolean;
+    downloadData: boolean;
+  };
+}
+
 export default function PrivacySettingsPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showConfirmActivity, setShowConfirmActivity] = useState(false);
@@ -29,7 +45,7 @@ export default function PrivacySettingsPage() {
     }
     return true;
   });
-  const [privacy, setPrivacy] = useState(() => {
+  const [privacy, setPrivacy] = useState<PrivacySettings>(() => {
     if (typeof window !== 'undefined') {
       const cached = localStorage.getItem('proxypress_privacy_data');
       if (cached) {
@@ -50,7 +66,7 @@ export default function PrivacySettingsPage() {
         personalizedAds: true,
         downloadData: false,
       }
-    };
+    } as PrivacySettings;
   });
 
   useEffect(() => {
@@ -122,7 +138,7 @@ export default function PrivacySettingsPage() {
       return;
     }
     setPrivacy(prev => {
-      const categoryObj = prev[category] as Record<string, any>;
+      const categoryObj = prev[category] as any;
       return {
         ...prev,
         [category]: {
