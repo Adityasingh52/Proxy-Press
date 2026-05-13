@@ -46,7 +46,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     return null;
   });
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (initialData?.currentUserId) return initialData.currentUserId;
+    if (typeof window !== 'undefined') return localStorage.getItem('proxypress_viewer_id');
+    return null;
+  });
   const isMe = currentUserId && user ? currentUserId === user.id : false;
   
   const [userPosts, setUserPosts] = useState<any[]>(() => {
@@ -149,11 +153,17 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           setIsFollowing(freshData.isFollowing || false);
           setFollowersCount(freshData.followCounts?.followers || 0);
           setFollowingCount(freshData.followCounts?.following || 0);
+          if (freshData.currentUserId) {
+            setCurrentUserId(freshData.currentUserId);
+            localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
+          }
           setIsLoading(false);
-          if (freshData.currentUserId) setCurrentUserId(freshData.currentUserId);
+        } else {
+          setIsLoading(false);
         }
       } catch (err) {
         console.error("Background refresh failed", err);
+        setIsLoading(false);
       }
     }
 
@@ -162,7 +172,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
 
   // Cache saving logic
   useEffect(() => {
-    if (typeof window !== 'undefined' && user && userPosts.length > 0) {
+    if (typeof window !== 'undefined' && user) {
       const cacheData = {
         user,
         posts: userPosts,
