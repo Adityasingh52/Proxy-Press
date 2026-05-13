@@ -84,13 +84,57 @@ export default function MobileBottomNav() {
         if (user) {
           setCurrentUserId(user.id);
           localStorage.setItem('proxypress_user_id', user.id);
-          // GLOBAL CACHE WARMING: Keep the self-profile hot no matter which page we are on
-          const profileData = await import('@/lib/actions').then(m => m.getProfileData(user.id));
+          // GLOBAL CACHE WARMING: Keep self-profile and messages hot
+          const actions = await import('@/lib/actions');
+          const [profileData, convs, stories] = await Promise.all([
+            actions.getProfileData(user.id),
+            actions.getConversations(user.id),
+            actions.getStories(user.id)
+          ]);
+
           if (profileData) {
-            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({
-              ...profileData,
-              timestamp: Date.now()
-            }));
+            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({ ...profileData, timestamp: Date.now() }));
+          }
+
+          if (convs) {
+            // Map conversations to UI format before caching
+            const mappedConvs = convs.map((dbConv: any) => {
+              const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== user.id);
+              const otherUser = otherParticipant?.user;
+              const displayName = (otherUser?.name && otherUser.name.includes('/uploads/')) ? (otherUser.username || 'User') : (otherUser?.name || 'Unknown User');
+              return {
+                id: dbConv.id,
+                user: {
+                  id: otherUser?.id || 'unknown',
+                  name: displayName,
+                  avatar: otherUser?.avatar || (displayName ? displayName.substring(0, 1) : 'U'),
+                  profilePicture: otherUser?.profilePicture,
+                  online: true,
+                },
+                lastMessage: dbConv.lastMessage || '',
+                lastMessageTime: dbConv.lastMessageTime || '',
+                rawLastMessageTime: dbConv.lastMessageTime || '',
+                unreadCount: dbConv.unreadCount || 0,
+                isTyping: false,
+                muted: dbConv.muted || false,
+                vanishMode: dbConv.vanishMode || false,
+                vanishDuration: dbConv.vanishDuration || 3600,
+                messages: (dbConv.messages || []).map((m: any) => ({
+                  id: m.id,
+                  senderId: m.senderId === user.id ? 'me' : m.senderId,
+                  text: m.text,
+                  timestamp: m.timestamp,
+                  seen: m.seen,
+                  type: m.type || 'text',
+                  attachment: m.attachment,
+                })).reverse(),
+              };
+            });
+            localStorage.setItem('messages_cache', JSON.stringify({ conversations: mappedConvs, timestamp: Date.now() }));
+          }
+
+          if (stories) {
+            localStorage.setItem('stories_cache', JSON.stringify({ stories, timestamp: Date.now() }));
           }
         }
       } catch (e) {

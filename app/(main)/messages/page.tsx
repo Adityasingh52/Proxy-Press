@@ -501,8 +501,51 @@ function MessagesContent() {
 
 
   /* ─── Story State ─── */
-  const [stories, setStories] = useState<UserStory[]>([]);
-  const [myStories, setMyStories] = useState<StorySlide[]>([]);
+  const [stories, setStories] = useState<UserStory[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('stories_cache');
+      if (cached) {
+        try {
+          const { stories: cachedStories } = JSON.parse(cached);
+          if (Array.isArray(cachedStories)) {
+            return cachedStories.map((s: any) => ({
+              userId: s.userId,
+              userName: s.user?.name || 'User',
+              userAvatar: (s.user?.name || 'U').substring(0, 1),
+              userProfilePicture: s.user?.profilePicture,
+              seen: s.seen,
+              slides: s.slides.map((sl: any) => ({
+                ...sl,
+                type: sl.type || 'image',
+                timestamp: sl.timestamp || 'Just now'
+              }))
+            }));
+          }
+        } catch (e) {}
+      }
+    }
+    return [];
+  });
+  const [myStories, setMyStories] = useState<StorySlide[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('stories_cache');
+      if (cached) {
+        try {
+          const { stories: cachedStories } = JSON.parse(cached);
+          const myId = localStorage.getItem('proxypress_user_id');
+          const myDbStory = cachedStories.find((s: any) => s.userId === myId);
+          if (myDbStory && myDbStory.slides) {
+            return myDbStory.slides.map((s: any) => ({
+              ...s,
+              type: s.type || 'image',
+              timestamp: s.timestamp || 'Just now'
+            }));
+          }
+        } catch (e) {}
+      }
+    }
+    return [];
+  });
   const [activeStoryUserIdx, setActiveStoryUserIdx] = useState<number | null>(null);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
@@ -1937,7 +1980,7 @@ function MessagesContent() {
         )}
       </div>
       <div className="msg-list-footer">
-        <MobileBottomNav />
+        <MobileBottomNav setCurrentUserId={setCurrentUserId} />
       </div>
     </div>
   );
@@ -2988,7 +3031,7 @@ function MessagesContent() {
   };
 
   return (
-    <div className="msg-page-wrapper">
+    <div className="messages-container animate-settingsFadeIn">
       <div className="msg-container">
         {renderConversationList()}
         {renderChatView()}
