@@ -69,14 +69,21 @@ export default function MobileBottomNav() {
   const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    // Instant fallback from localStorage
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('last_user_id');
+    }
+    return null;
+  });
 
-  // 0. Instant Cache Load (Run this first, before anything else)
+  // 0. Instant Cache Load (Upgrade from native cache if available)
   useEffect(() => {
     async function loadInstantId() {
       const cachedId = await OfflineManager.loadData<string>('last_user_id');
       if (cachedId) {
         setCurrentUserId(cachedId);
+        localStorage.setItem('last_user_id', cachedId);
       }
     }
     loadInstantId();
@@ -98,6 +105,7 @@ export default function MobileBottomNav() {
         if (user) {
           setCurrentUserId(user.id);
           OfflineManager.saveData('last_user_id', user.id);
+          localStorage.setItem('last_user_id', user.id);
           
           // Prefetch the specific profile route once we have the ID
           router.prefetch(`/profile/${user.id}`);
@@ -165,7 +173,21 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={href}
-              onClick={() => setOptimisticTab(item.href)}
+              onClick={(e) => {
+                setOptimisticTab(item.href);
+                // Hard safety for profile: If we still don't have an ID, try to get it before navigating
+                if (item.href === '/profile' && !currentUserId) {
+                   e.preventDefault();
+                   import('@/lib/actions').then(m => m.getCurrentUser()).then(u => {
+                     if (u) {
+                       setCurrentUserId(u.id);
+                       router.push(`/profile/${u.id}`);
+                     } else {
+                       router.push('/login');
+                     }
+                   });
+                }
+              }}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">
