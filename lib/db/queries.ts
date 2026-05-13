@@ -225,11 +225,19 @@ export async function getConversations(userId: string) {
   const unreadMap = new Map(unreadCounts.map(uc => [uc.conversationId, Number(uc.count)]));
 
   // 5. Filter out conversations with blocked users and map unread counts
+  // Also deduplicate conversations so we only show one per user, avoiding DB pollution bugs
+  const seenUserIds = new Set();
   const results = convs
     .filter(conv => {
       const otherParticipant = conv.participants.find(p => p.userId !== userId);
       if (!otherParticipant) return true;
-      return !blockedUserIds.includes(otherParticipant.userId as string);
+      if (blockedUserIds.includes(otherParticipant.userId as string)) return false;
+      
+      if (seenUserIds.has(otherParticipant.userId)) {
+        return false; // Skip duplicates (keep the latest one because convs is sorted by lastMessageTime DESC)
+      }
+      seenUserIds.add(otherParticipant.userId);
+      return true;
     })
     .map(conv => {
       return {

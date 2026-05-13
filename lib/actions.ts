@@ -250,24 +250,49 @@ export async function sendMessage(data: {
     });
     if (block) throw new Error('Cannot send message to a blocked user');
 
-    const newConvId = `c${Date.now()}`;
+    // Prevent duplicates: Check if a conversation ALREADY exists between these two users
+    const senderConvs = await db.select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.userId, data.senderId));
     
-    const nowIso = new Date().toISOString();
+    const senderConvIds = senderConvs.map(c => c.conversationId);
     
-    // Create the conversation
-    await db.insert(schema.conversations).values({
-      id: newConvId,
-      lastMessage: data.text,
-      lastMessageTime: nowIso,
-    });
+    let existingConvId = null;
+    if (senderConvIds.length > 0) {
+      const targetConvs = await db.select({ conversationId: schema.conversationParticipants.conversationId })
+        .from(schema.conversationParticipants)
+        .where(
+          and(
+            eq(schema.conversationParticipants.userId, targetUserId),
+            inArray(schema.conversationParticipants.conversationId, senderConvIds)
+          )
+        );
+      if (targetConvs.length > 0) {
+        existingConvId = targetConvs[0].conversationId;
+      }
+    }
 
-    // Add participants
-    await db.insert(schema.conversationParticipants).values([
-      { conversationId: newConvId, userId: data.senderId },
-      { conversationId: newConvId, userId: targetUserId }
-    ]);
+    if (existingConvId) {
+      // Reuse existing conversation
+      finalConversationId = existingConvId;
+    } else {
+      // Create new conversation
+      const newConvId = `c${Date.now()}`;
+      const nowIso = new Date().toISOString();
+      
+      await db.insert(schema.conversations).values({
+        id: newConvId,
+        lastMessage: data.text,
+        lastMessageTime: nowIso,
+      });
 
-    finalConversationId = newConvId;
+      await db.insert(schema.conversationParticipants).values([
+        { conversationId: newConvId, userId: data.senderId },
+        { conversationId: newConvId, userId: targetUserId }
+      ]);
+
+      finalConversationId = newConvId;
+    }
   } else {
     // Check blocks for existing conversation
     const participants = await db.query.conversationParticipants.findMany({
