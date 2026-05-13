@@ -1978,7 +1978,6 @@ function MessagesContent() {
 
           </div>
       </div>
-    </div>
   );
 
   /* ─── CHAT VIEW ─── */
