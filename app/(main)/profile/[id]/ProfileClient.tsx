@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import '../profile.css';
 import Link from 'next/link';
 import { blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
@@ -20,6 +21,7 @@ const REPORT_REASONS = [
 ];
 
 export default function ProfileClient({ id, initialData }: { id: string; initialData: any }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
 
   // Use a ref to track if we've already loaded from cache to avoid infinite loops
