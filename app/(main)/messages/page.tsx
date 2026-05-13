@@ -235,11 +235,18 @@ function MessagesContent() {
       if (lastId) {
         setCurrentUserId(lastId);
         // 2. Load their conversations instantly
-        const cached = await OfflineManager.loadData<Conversation[]>(`convs_${lastId}`);
-        if (cached && cached.length > 0) {
+        const [cachedConvs, cachedStories, cachedMyStories] = await Promise.all([
+          OfflineManager.loadData<Conversation[]>(`convs_${lastId}`),
+          OfflineManager.loadData<UserStory[]>(`stories_${lastId}`),
+          OfflineManager.loadData<any[]>(`mystories_${lastId}`)
+        ]);
+
+        if (cachedConvs && cachedConvs.length > 0) {
           console.log('[Offline] Instant startup for:', lastId);
-          setConversations(cached);
+          setConversations(cachedConvs);
         }
+        if (cachedStories) setStories(cachedStories);
+        if (cachedMyStories) setMyStories(cachedMyStories);
       }
     }
     loadCacheOnMount();
@@ -364,9 +371,15 @@ function MessagesContent() {
             }));
           
           setStories(otherStories);
+
+          // 4. Save Stories to cache
+          OfflineManager.saveData(`stories_${myId}`, otherStories);
+          OfflineManager.saveData(`mystories_${myId}`, myDbStory?.slides || []);
         } else {
            setStories([]);
            setMyStories([]);
+           OfflineManager.saveData(`stories_${myId}`, []);
+           OfflineManager.saveData(`mystories_${myId}`, []);
         }
       } catch (err) {
         console.error('Failed to load initial messages data:', err);
