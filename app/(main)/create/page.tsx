@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { uploadMedia, createPost, updatePost, getPostById, getCurrentUser } from '@/lib/actions';
 import { categories } from '@/lib/data';
 import type { Category } from '@/lib/data';
@@ -26,6 +27,7 @@ function CreatePostContent() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
@@ -102,6 +104,14 @@ function CreatePostContent() {
       videoRef.current.srcObject = cameraStream;
     }
   }, [showCamera, cameraStream]);
+
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getCurrentUser();
+      if (user) setCurrentUserId(user.id);
+    }
+    loadUser();
+  }, []);
 
   useEffect(() => {
     if (isEditing && editId) {
@@ -445,11 +455,18 @@ function CreatePostContent() {
           <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
             Your post is now live on the campus feed.
           </p>
-          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={() => { setPublished(false); setTitle(''); setDescription(''); setCategory(''); setMediaUrl(null); setMediaType(null); }}>
               ✍️ Write Another
             </button>
-            <a href="/" className="btn btn-ghost">🏠 Back to Feed</a>
+            <Link href="/" className="btn btn-ghost">🏠 Home</Link>
+            <Link 
+              href={currentUserId ? `/profile/${currentUserId}` : '/profile'} 
+              className="btn btn-ghost" 
+              style={{ border: '1px solid var(--primary)', color: 'var(--primary)' }}
+            >
+              👤 View Profile
+            </Link>
           </div>
         </div>
       </div>
