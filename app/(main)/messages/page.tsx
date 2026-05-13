@@ -1980,7 +1980,7 @@ function MessagesContent() {
         )}
       </div>
       <div className="msg-list-footer">
-        <MobileBottomNav setCurrentUserId={setCurrentUserId} />
+        <MobileBottomNav />
       </div>
     </div>
   );
