@@ -658,6 +658,17 @@ function MessagesContent() {
   const cameraRecordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lightboxRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (cameraActive) {
+      document.body.classList.add('camera-active');
+    } else {
+      document.body.classList.remove('camera-active');
+    }
+    return () => {
+      document.body.classList.remove('camera-active');
+    };
+  }, [cameraActive]);
+
 
 
   useEffect(() => {

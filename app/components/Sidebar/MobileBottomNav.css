@@ -112,4 +112,8 @@
   .mobile-bottom-nav {
     display: block;
   }
+
+  body.camera-active .mobile-bottom-nav {
+    display: none !important;
+  }
 }

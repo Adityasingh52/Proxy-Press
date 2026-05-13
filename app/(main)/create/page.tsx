@@ -103,6 +103,17 @@ function CreatePostContent() {
     if (showCamera && videoRef.current && cameraStream) {
       videoRef.current.srcObject = cameraStream;
     }
+
+    // Hide global nav when camera is open
+    if (showCamera) {
+      document.body.classList.add('camera-active');
+    } else {
+      document.body.classList.remove('camera-active');
+    }
+    
+    return () => {
+      document.body.classList.remove('camera-active');
+    };
   }, [showCamera, cameraStream]);
 
   useEffect(() => {
