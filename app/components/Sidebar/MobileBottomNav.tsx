@@ -152,14 +152,17 @@ export default function MobileBottomNav() {
         {navItems.map((item) => {
           let href = item.href;
           
-          // Optimization: Link directly to the user's profile to avoid redirects
-          if (href === '/profile' && currentUserId) {
-            href = `/profile/${currentUserId}`;
+          // CRITICAL: Ensure the Profile link is ALWAYS direct and never depends on a slow redirect
+          if (href === '/profile') {
+            const storedId = typeof window !== 'undefined' ? (currentUserId || localStorage.getItem('proxypress_user_id')) : null;
+            if (storedId) {
+              href = `/profile/${storedId}`;
+            }
           }
 
           const isActive = item.href === '/' 
             ? pathname === '/' 
-            : pathname.startsWith(item.href);
+            : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/'));
 
           const badge = item.href === '/messages' ? unreadCount : 0;
           
