@@ -103,6 +103,13 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
   const [isMuted, setIsMuted] = useState(initialData?.isMuted || false);
 
+  // Settings Pre-warming: If this is my profile, keep my global user data fresh for Settings
+  useEffect(() => {
+    if (isMe && user && typeof window !== 'undefined') {
+      localStorage.setItem('proxypress_user_data', JSON.stringify(user));
+    }
+  }, [isMe, user]);
+
   // Cache loading logic
   useEffect(() => {
     if (typeof window !== 'undefined' && !cacheLoaded.current) {
