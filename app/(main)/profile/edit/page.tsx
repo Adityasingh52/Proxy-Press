@@ -238,10 +238,7 @@ export default function EditProfilePage() {
     <div className="edit-profile-container design-ref">
       <div className="ref-header">
         <button 
-          onClick={() => {
-            const userId = typeof window !== 'undefined' ? localStorage.getItem('proxypress_user_id') : null;
-            router.push(userId ? `/profile/${userId}` : '/profile');
-          }} 
+          onClick={() => router.push('/settings')} 
           className="ref-back-btn"
         >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
