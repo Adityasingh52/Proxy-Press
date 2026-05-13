@@ -582,11 +582,6 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           className={`ig-full-image-overlay ${isClosingFullImage ? 'closing' : ''}`}
           onClick={handleCloseFullImage}
         >
-          <button className="ig-full-image-close" onClick={handleCloseFullImage}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
           <div className="ig-full-image-content" onClick={(e) => e.stopPropagation()}>
             <img 
               src={user.profilePicture || user.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=500`} 
