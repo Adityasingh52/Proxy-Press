@@ -541,6 +541,11 @@ function MessagesContent() {
       }
     } else if (targetChatId) {
       if (activeChat !== targetChatId) setActiveChat(targetChatId);
+    } else {
+      // If no chatId or userId in URL, clear active chat
+      if (activeChat !== null) {
+        setActiveChat(null);
+      }
     }
   }, [searchParams, currentUserId, conversations.length, activeChat]);
 
@@ -999,12 +1004,11 @@ function MessagesContent() {
           : c
       ));
     }
-    setActiveChat(null);
-    // Clear URL parameters so we don't immediately re-open the chat via effect
+    // Clear URL parameters - the useEffect will handle clearing activeChat
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.delete('userId');
     newParams.delete('chatId');
-    router.replace(`/messages${newParams.toString() ? `?${newParams.toString()}` : ''}`, { scroll: false });
+    router.push(`/messages${newParams.toString() ? `?${newParams.toString()}` : ''}`, { scroll: false });
   }, [activeChat, activeConversation?.vanishMode, searchParams, router]);
 
   const toggleVanishMode = async () => {
@@ -1179,7 +1183,7 @@ function MessagesContent() {
     // Set story param
     const newParams = new URLSearchParams(searchParams.toString());
     newParams.set('story', 'true');
-    router.replace(`/messages?${newParams.toString()}`, { scroll: false });
+    router.push(`/messages?${newParams.toString()}`, { scroll: false });
 
     const viewable = allViewableStories();
     const currentUser = viewable[userIdx];
@@ -2077,7 +2081,7 @@ function MessagesContent() {
                 <button
                   key={c.id}
                   className="msg-online-avatar-btn"
-                  onClick={() => router.replace(`/messages?chatId=${c.id}`, { scroll: false })}
+                  onClick={() => router.push(`/messages?chatId=${c.id}`, { scroll: false })}
                 >
                   <div className="msg-online-avatar-ring">
                     <div className="msg-online-avatar">
@@ -2105,7 +2109,7 @@ function MessagesContent() {
           <button
             key={conv.id}
             className={`msg-conversation-item ${activeChat === conv.id ? 'active' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}`}
-            onClick={() => router.replace(`/messages?chatId=${conv.id}`, { scroll: false })}
+            onClick={() => router.push(`/messages?chatId=${conv.id}`, { scroll: false })}
           >
             <div className="msg-conv-avatar-wrapper">
               <div className={`msg-conv-avatar ${conv.user.online ? 'online' : ''}`}>
@@ -2180,7 +2184,7 @@ function MessagesContent() {
                         if (prev.find(c => c.id === newConv.id)) return prev;
                         return [newConv, ...prev];
                     });
-                    router.replace(`/messages?userId=${user.id}`, { scroll: false });
+                    router.push(`/messages?userId=${user.id}`, { scroll: false });
                     setSearchQuery('');
                     setSearchResults([]);
                   }}
