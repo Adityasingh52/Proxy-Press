@@ -156,6 +156,7 @@ cloudinary.config({
 /**
  * Universal Media Upload Action via Cloudinary
  */
+export async function uploadMedia(formData: FormData) {
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
 
