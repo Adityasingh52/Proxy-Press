@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
 import './MobileBottomNav.css';
@@ -64,6 +64,7 @@ const navItems = [
 ];
 
 export default function MobileBottomNav() {
+  const router = useRouter();
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
@@ -146,6 +147,17 @@ export default function MobileBottomNav() {
     return () => clearInterval(interval);
   }, [pathname]);
 
+  const handleNav = (e: React.MouseEvent, href: string) => {
+    e.preventDefault();
+    if (pathname === href || (href.includes('/profile/') && pathname.includes('/profile/'))) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      // Also try to scroll the main content if it's a specific container
+      document.getElementById('main-content')?.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    router.push(href);
+  };
+
   return (
     <nav className="mobile-bottom-nav">
       <div className="mobile-nav-container">
@@ -171,6 +183,7 @@ export default function MobileBottomNav() {
               <div key={item.href} className="mobile-nav-item mobile-nav-create-wrapper">
                 <Link
                   href={href}
+                  onClick={(e) => handleNav(e, href)}
                   className="mobile-nav-create-btn"
                 >
                   {item.icon(isActive)}
@@ -183,6 +196,7 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={href}
+              onClick={(e) => handleNav(e, href)}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">
