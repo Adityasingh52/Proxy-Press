@@ -543,7 +543,7 @@ export async function markMessagesAsSeen(conversationId: string, userId: string)
     ));
 
   await invalidateConversationCache(conversationId);
-  revalidatePath('/messages');
+  // revalidatePath('/messages');
   return { success: true };
 }
 

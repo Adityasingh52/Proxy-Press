@@ -71,22 +71,16 @@ export default function MobileBottomNav() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
   
-  // Hide footer when in a DM, Story view, or Edit Profile page
-  const chatId = searchParams.get('chatId');
-  const userId = searchParams.get('userId');
-  const isStory = searchParams.get('story') === 'true';
-  const isInsideChat = pathname === '/messages' && (chatId || userId || isStory);
-  const isSettings = pathname.startsWith('/settings');
-  const isEditProfile = pathname === '/profile/edit';
 
-  if (isInsideChat || isSettings || isEditProfile) return null;
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    // Instant fallback from localStorage
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('last_user_id');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Sync with localStorage AFTER mount to avoid hydration mismatch
+  useEffect(() => {
+    const savedId = localStorage.getItem('last_user_id');
+    if (savedId) {
+      setCurrentUserId(savedId);
     }
-    return null;
-  });
+  }, []);
 
   // 0. Instant Cache Load (Upgrade from native cache if available)
   useEffect(() => {
@@ -145,6 +139,19 @@ export default function MobileBottomNav() {
     getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
     setOptimisticTab(null); // Sync back to real path when navigation finishes
   }, [pathname]);
+
+  const isStory = searchParams.get('story') === 'true';
+  const chatId = searchParams.get('chatId');
+  const userId = searchParams.get('userId');
+  
+  const isMessages = pathname.startsWith('/messages');
+  const isSettings = pathname.startsWith('/settings');
+  const isEditProfile = pathname === '/profile/edit';
+  
+  // Hide footer if we are inside a story view (anywhere), inside a specific chat, or on settings/edit profile
+  const shouldHide = isStory || (isMessages && (chatId || userId)) || isSettings || isEditProfile;
+
+  if (shouldHide) return null;
 
   return (
     <nav className="mobile-bottom-nav">

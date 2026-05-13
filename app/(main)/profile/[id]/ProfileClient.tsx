@@ -528,24 +528,32 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
               className="ig-header-settings-btn" 
               aria-label="Settings"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </Link>
           ) : (
-            <div ref={menuRef} style={{ position: 'absolute', top: 0, right: 0 }}>
-              <button className="ig-header-settings-btn" onClick={() => setShowOptionsMenu(prev => !prev)}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>
+            <div ref={menuRef} className="ig-header-options-wrapper">
+              <button className="ig-header-settings-btn" onClick={() => setShowOptionsMenu(prev => !prev)} aria-label="Options">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
                 </svg>
               </button>
               {showOptionsMenu && (
                 <div className="dropdown-menu">
-                   <button onClick={handleCopyLink}>🔗 Copy Link</button>
-                   <button onClick={handleShareProfile}>📤 Share Profile</button>
-                   <button onClick={handleMuteToggle}>{isMuted ? '🔔' : '🔕'} {isMuted ? 'Unmute' : 'Mute'}</button>
-                   <button onClick={() => setShowBlockConfirm(true)}>{isBlocked ? '✅' : '🚫'} {isBlocked ? 'Unblock' : 'Block'}</button>
-                   <button onClick={() => setShowReportModal(true)}>🚩 Report</button>
+                   <button onClick={handleCopyLink}><span>🔗</span> Copy Link</button>
+                   <button onClick={handleShareProfile}><span>📤</span> Share Profile</button>
+                   <button onClick={handleMuteToggle}>
+                     <span>{isMuted ? '🔔' : '🔕'}</span> 
+                     {isMuted ? 'Unmute' : 'Mute'}
+                   </button>
+                   <button onClick={() => setShowBlockConfirm(true)} className={isBlocked ? '' : 'danger'}>
+                     <span>{isBlocked ? '✅' : '🚫'}</span> 
+                     {isBlocked ? 'Unblock' : 'Block'}
+                   </button>
+                   <button onClick={() => setShowReportModal(true)} className="danger">
+                     <span>🚩</span> Report
+                   </button>
                 </div>
               )}
             </div>

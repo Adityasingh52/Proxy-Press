@@ -174,6 +174,7 @@ function MessagesContent() {
   const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
+  const [activeChatVersion, setActiveChatVersion] = useState(0);
 
   /* ─── Offline Manager Init ─── */
   useEffect(() => {
@@ -460,6 +461,11 @@ function MessagesContent() {
               const isChanged = existing && newC.rawLastMessageTime !== existing.rawLastMessageTime;
               const isActive = newC.id === activeChat;
 
+              if (isChanged && isActive) {
+                // Trigger a re-fetch of messages for the active chat
+                setTimeout(() => setActiveChatVersion(v => v + 1), 0);
+              }
+
               return {
                 ...newC,
                 // If it's the active chat and it changed, clear messages to trigger re-fetch.
@@ -478,7 +484,7 @@ function MessagesContent() {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 4000); // 4 seconds for better responsiveness
+    }, 10000); // 10 seconds for better performance and to prevent server saturation
 
     return () => clearInterval(pollInterval);
   }, [currentUserId, activeChat]);
@@ -589,7 +595,7 @@ function MessagesContent() {
     }
 
     loadChatMessages();
-  }, [activeChat, currentUserId, conversations]);
+  }, [activeChat, currentUserId, activeChatVersion]); // Only re-run when chat changes OR a new message is detected by polling
   const [messageInput, setMessageInput] = useState('');
   const activeConversation = conversations.find(c => c.id === activeChat);
   const [searchQuery, setSearchQuery] = useState('');
@@ -668,6 +674,17 @@ function MessagesContent() {
       document.body.classList.remove('camera-active');
     };
   }, [cameraActive]);
+
+  useEffect(() => {
+    if (showCreateStory) {
+      document.body.classList.add('story-create-active');
+    } else {
+      document.body.classList.remove('story-create-active');
+    }
+    return () => {
+      document.body.classList.remove('story-create-active');
+    };
+  }, [showCreateStory]);
 
 
 
@@ -2781,7 +2798,7 @@ function MessagesContent() {
           {/* Header */}
           <div className="story-header">
             <Link 
-              href={currentUser.userId === 'me' ? '/profile' : `/profile/${currentUser.userId}`} 
+              href={!currentUser.userId ? '/profile' : (currentUser.userId === 'me' ? '/profile' : `/profile/${currentUser.userId}`)} 
               className="story-header-info-link"
               style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', color: 'inherit' }}
             >
@@ -2879,35 +2896,53 @@ function MessagesContent() {
           </div>
 
           {/* Footer - Reply + reactions */}
-          {currentUser.userId !== 'me' && (
-            <div className="story-footer">
-              <div className="story-quick-reactions">
-                {['❤️', '😂', '😮', '🔥'].map(emoji => (
-                  <button key={emoji} className="story-quick-reaction-btn" onClick={() => handleStoryReaction(emoji)}>
-                    {emoji}
+          <div className="story-footer">
+            {currentUser.userId !== 'me' ? (
+              <>
+                <div className="story-quick-reactions">
+                  {['❤️', '😂', '😮', '🔥'].map(emoji => (
+                    <button key={emoji} className="story-quick-reaction-btn" onClick={() => handleStoryReaction(emoji)}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <div className="story-reply-row">
+                  <input
+                    ref={storyReplyInputRef}
+                    type="text"
+                    className="story-reply-input"
+                    placeholder={`Reply to ${currentUser.userName.split(' ')[0]}...`}
+                    value={storyReply}
+                    onChange={e => setStoryReply(e.target.value)}
+                    onKeyDown={handleStoryReplyKeyDown}
+                    onFocus={() => setStoryPaused(true)}
+                    onBlur={() => setStoryPaused(false)}
+                  />
+                  <button className="story-reply-send-btn" onClick={sendStoryReply}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                    </svg>
                   </button>
-                ))}
-              </div>
-              <div className="story-reply-row">
-                <input
-                  ref={storyReplyInputRef}
-                  type="text"
-                  className="story-reply-input"
-                  placeholder={`Reply to ${currentUser.userName.split(' ')[0]}...`}
-                  value={storyReply}
-                  onChange={e => setStoryReply(e.target.value)}
-                  onKeyDown={handleStoryReplyKeyDown}
-                  onFocus={() => setStoryPaused(true)}
-                  onBlur={() => setStoryPaused(false)}
-                />
-                <button className="story-reply-send-btn" onClick={sendStoryReply}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </div>
+              </>
+            ) : (
+              <div className="story-footer-my-view">
+                <div className="story-quick-reactions">
+                  {['❤️', '😂', '😮', '🔥'].map(emoji => (
+                    <button key={emoji} className="story-quick-reaction-btn" onClick={() => handleStoryReaction(emoji)}>
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+                <div className="story-my-stats">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                   </svg>
-                </button>
+                  <span>Activity</span>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     );
