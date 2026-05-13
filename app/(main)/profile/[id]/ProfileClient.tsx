@@ -458,7 +458,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   }
 
   return (
-    <div className="ig-profile animate-fade-in-instant" id="profile-page" style={{ position: 'relative' }}>
+    <div className="ig-profile" id="profile-page" style={{ position: 'relative' }}>
       {/* ─── Toast ─── */}
       {toast && (
         <div style={{
