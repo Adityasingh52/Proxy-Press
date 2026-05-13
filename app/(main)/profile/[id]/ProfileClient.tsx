@@ -49,10 +49,14 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
 
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     if (initialData?.currentUserId) return initialData.currentUserId;
-    if (typeof window !== 'undefined') return localStorage.getItem('proxypress_viewer_id');
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('last_user_id') || 
+             localStorage.getItem('proxypress_viewer_id') || 
+             localStorage.getItem('pp_cache_last_user_id');
+    }
     return null;
   });
-  const isMe = currentUserId && user ? currentUserId === user.id : false;
+  const isMe = currentUserId && (id === currentUserId || (user && currentUserId === user.id));
   
   const [userPosts, setUserPosts] = useState<any[]>(() => {
     if (initialData?.posts) return initialData.posts;
@@ -156,6 +160,10 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           if (freshData.currentUserId) {
             setCurrentUserId(freshData.currentUserId);
             OfflineManager.saveData('last_user_id', freshData.currentUserId);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('last_user_id', freshData.currentUserId);
+              localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
+            }
           }
 
           // Update Cache

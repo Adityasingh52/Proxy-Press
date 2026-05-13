@@ -1910,17 +1910,17 @@ function MessagesContent() {
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <div className="msg-info-avatar-section">
-            <div className={`msg-info-avatar-ring ${user.online ? 'online' : ''}`}>
-              <div className="msg-info-avatar-circle">
-                {user.profilePicture ? (
-                  <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-                ) : user.avatar}
+            <Link href={user.id === 'me' ? '/profile' : `/profile/${user.id}`} className="msg-info-avatar-section" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div className={`msg-info-avatar-ring ${user.online ? 'online' : ''}`}>
+                <div className="msg-info-avatar-circle">
+                  {user.profilePicture ? (
+                    <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                  ) : user.avatar}
+                </div>
               </div>
-            </div>
-            <h2 className="msg-info-name">{user.name}</h2>
-            <span className="msg-info-status">{user.online ? 'Active now' : `Last seen ${user.lastSeen || 'recently'}`}</span>
-          </div>
+              <h2 className="msg-info-name">{user.name}</h2>
+              <span className="msg-info-status">{user.online ? 'Active now' : `Last seen ${user.lastSeen || 'recently'}`}</span>
+            </Link>
           <div className="msg-info-actions">
             <Link href={`/profile/${user.id}`} className="msg-info-action-btn" style={{ textDecoration: 'none' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -2263,7 +2263,7 @@ function MessagesContent() {
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <div className="msg-chat-header-user" onClick={() => setShowChatInfo(true)}>
+              <Link href={user.id === 'me' ? '/profile' : `/profile/${user.id}`} className="msg-chat-header-user" style={{ textDecoration: 'none', color: 'inherit' }}>
                 <div className={`msg-chat-header-avatar ${user.online ? 'online' : ''}`}>
                   {user.profilePicture ? (
                     <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
@@ -2277,7 +2277,7 @@ function MessagesContent() {
                     ) : user.online ? 'Active now' : `${user.lastSeen || 'Offline'}`}
                   </span>
                 </div>
-              </div>
+              </Link>
               <div className="msg-chat-header-actions">
                 <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => setShowFutureModal(true)}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -2328,7 +2328,7 @@ function MessagesContent() {
             </div>
           )}
           {/* Chat intro */}
-          <div className="msg-chat-intro">
+          <Link href={user.id === 'me' ? '/profile' : `/profile/${user.id}`} className="msg-chat-intro" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div className={`msg-intro-avatar-ring ${user.online ? 'online' : ''}`}>
               <div className="msg-intro-avatar">
                 {user.profilePicture ? (
@@ -2338,7 +2338,7 @@ function MessagesContent() {
             </div>
             <h3 className="msg-intro-name">{user.name}</h3>
             <p className="msg-intro-subtitle">ProxyPress · You both follow each other</p>
-          </div>
+          </Link>
 
           {/* Message bubbles */}
           {messages.map((msg, i) => {
@@ -2780,15 +2780,23 @@ function MessagesContent() {
 
           {/* Header */}
           <div className="story-header">
-            <div className="story-header-avatar">
-              {currentUser.userProfilePicture ? (
-                <img src={currentUser.userProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
-              ) : currentUser.userAvatar}
-            </div>
-            <div className="story-header-info">
-              <span className="story-header-name">{currentUser.userName}</span>
-              <span className="story-header-time">{currentSlide.timestamp}</span>
-            </div>
+            <Link 
+              href={currentUser.userId === 'me' ? '/profile' : `/profile/${currentUser.userId}`} 
+              className="story-header-info-link"
+              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px', color: 'inherit' }}
+            >
+              <div className="story-header-avatar">
+                {currentUser.userProfilePicture ? (
+                  <img src={currentUser.userProfilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
+                ) : (
+                  <div className="story-avatar-initials">{currentUser.userAvatar}</div>
+                )}
+              </div>
+              <div className="story-header-info">
+                <span className="story-header-name">{currentUser.userName}</span>
+                <span className="story-header-time">{currentSlide.timestamp}</span>
+              </div>
+            </Link>
             <button className="story-close-btn" onClick={closeStoryViewer}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -3591,14 +3599,14 @@ function MessagesContent() {
                 .filter(c => c.user.name.toLowerCase().includes(forwardSearch.toLowerCase()))
                 .map(conv => (
                   <div key={conv.id} className="msg-forward-item">
-                    <div className="msg-forward-user">
+                    <Link href={`/profile/${conv.user.id}`} className="msg-forward-user" style={{ textDecoration: 'none', color: 'inherit' }}>
                       <div className="msg-forward-avatar" style={{ background: 'var(--accent-gradient)' }}>
                         {conv.user.profilePicture ? (
                           <img src={conv.user.profilePicture} alt="" />
                         ) : conv.user.avatar}
                       </div>
                       <span className="msg-forward-name">{conv.user.name}</span>
-                    </div>
+                    </Link>
                     <button 
                       className="msg-forward-send-btn"
                       onClick={async () => {
