@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
 import './MobileBottomNav.css';
 
 const navItems = [
