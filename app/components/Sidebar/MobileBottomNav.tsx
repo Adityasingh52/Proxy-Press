@@ -66,33 +66,73 @@ const navItems = [
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('proxypress_user_id');
+    }
+    return null;
+  });
 
+  // 1. Initial Data Load & Periodic Refresh (Mount Only)
   useEffect(() => {
-    async function loadCount() {
+    async function initLoad() {
       try {
-        const count = await getUnreadMessageCountAction();
-        setUnreadCount(count);
+        const actions = await import('@/lib/actions');
+        const user = await actions.getCurrentUser();
+        
+        if (user) {
+          setCurrentUserId(user.id);
+          localStorage.setItem('proxypress_user_id', user.id);
+          
+          // Refresh count immediately
+          const count = await actions.getUnreadMessageCountAction();
+          setUnreadCount(count);
+          const profileData = await actions.getProfileData(user.id);
+
+          if (profileData) {
+            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({ ...profileData, timestamp: Date.now() }));
+          }
+        }
       } catch (e) {
-        console.error('Failed to load unread count', e);
+        console.error('Initial load failed', e);
       }
     }
-    loadCount();
-    const interval = setInterval(loadCount, 15000); // Poll every 15s
+
+    initLoad();
+    const interval = setInterval(initLoad, 20000); // 20s interval is enough
     return () => clearInterval(interval);
+  }, []);
+
+  // 2. Lightweight Pathname Refresh (Only for notifications/badge)
+  useEffect(() => {
+    getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
   }, [pathname]);
 
   return (
     <nav className="mobile-bottom-nav">
       <div className="mobile-nav-container">
         {navItems.map((item) => {
-          const isActive = pathname === item.href;
+          let href = item.href;
+          
+          // CRITICAL: Ensure the Profile link is ALWAYS direct and never depends on a slow redirect
+          if (href === '/profile') {
+            const storedId = typeof window !== 'undefined' ? (currentUserId || localStorage.getItem('proxypress_user_id')) : null;
+            if (storedId) {
+              href = `/profile/${storedId}`;
+            }
+          }
+
+          const isActive = item.href === '/' 
+            ? pathname === '/' 
+            : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/'));
+
           const badge = item.href === '/messages' ? unreadCount : 0;
           
           if (item.isCreate) {
             return (
               <div key={item.href} className="mobile-nav-item mobile-nav-create-wrapper">
                 <Link
-                  href={item.href}
+                  href={href}
                   className="mobile-nav-create-btn"
                 >
                   {item.icon(isActive)}
@@ -104,7 +144,7 @@ export default function MobileBottomNav() {
           return (
             <Link
               key={item.href}
-              href={item.href}
+              href={href}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">

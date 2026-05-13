@@ -5,18 +5,38 @@ import { useEffect, useState } from 'react';
 import '../settings.css';
 import { getCurrentUser, updateUserNotificationSettings } from '@/lib/actions';
 
+interface NotificationSettings {
+  notifyLikes: boolean;
+  notifyComments: boolean;
+  notifyMentions: boolean;
+  notifyNewPosts: boolean;
+}
+
 export default function NotificationSettingsPage() {
-  const [settings, setSettings] = useState({
-    notifyLikes: true,
-    notifyComments: true,
-    notifyMentions: true,
-    notifyNewPosts: false,
+  const [settings, setSettings] = useState<NotificationSettings>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_notification_settings');
+      if (cached) {
+        try { return JSON.parse(cached); } catch (e) {}
+      }
+    }
+    return {
+      notifyLikes: true,
+      notifyComments: true,
+      notifyMentions: true,
+      notifyNewPosts: false,
+    } as NotificationSettings;
   });
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('proxypress_notification_settings');
+    }
+    return true;
+  });
   const [confirmModal, setConfirmModal] = useState<{
     show: boolean;
-    key: keyof typeof settings | null;
+    key: keyof NotificationSettings | null;
     label: string;
     currentValue: boolean;
   }>({
@@ -30,12 +50,16 @@ export default function NotificationSettingsPage() {
     async function loadSettings() {
       const user = await getCurrentUser();
       if (user) {
-        setSettings({
+        const newSettings = {
           notifyLikes: user.notifyLikes ?? true,
           notifyComments: user.notifyComments ?? true,
           notifyMentions: user.notifyMentions ?? true,
           notifyNewPosts: user.notifyNewPosts ?? false,
-        });
+        };
+        setSettings(newSettings);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('proxypress_notification_settings', JSON.stringify(newSettings));
+        }
       }
       setLoading(false);
     }
@@ -48,7 +72,7 @@ export default function NotificationSettingsPage() {
     }
   }, []);
 
-  const handleToggleRequest = (key: keyof typeof settings, label: string) => {
+  const handleToggleRequest = (key: keyof NotificationSettings, label: string) => {
     setConfirmModal({
       show: true,
       key,
@@ -75,25 +99,7 @@ export default function NotificationSettingsPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="settings-container">
-        <div className="settings-header">
-          <Link href="/settings" className="settings-back-btn">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </Link>
-          <h1 className="settings-title">Notifications</h1>
-        </div>
-        <div className="settings-content">
-          <div className="loading-placeholder" style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-            Loading settings...
-          </div>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="settings-container" style={{ animation: 'none' }}>

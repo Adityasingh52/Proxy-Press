@@ -14,12 +14,23 @@ export default function SettingsPage() {
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_user_data');
+      if (cached) {
+        try { return JSON.parse(cached); } catch (e) { return null; }
+      }
+    }
+    return null;
+  });
 
   useEffect(() => {
     async function loadUser() {
       const u = await getCurrentUser();
       setUser(u);
+      if (u && typeof window !== 'undefined') {
+        localStorage.setItem('proxypress_user_data', JSON.stringify(u));
+      }
     }
     loadUser();
 
@@ -170,7 +181,10 @@ export default function SettingsPage() {
   return (
     <div className="settings-container">
       <div className="settings-header">
-        <Link href="/profile" className="settings-back-btn">
+        <Link 
+          href={user?.id ? `/profile/${user.id}` : '/profile'} 
+          className="settings-back-btn"
+        >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>

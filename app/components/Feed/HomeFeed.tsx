@@ -1,17 +1,37 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { Category, Post } from '@/lib/data';
 import PostCard from './PostCard';
 import CategoryFilters from './CategoryFilters';
-import { getInitialData, getCurrentUser } from '@/lib/actions';
+import { getInitialData, getCurrentUser, getProfileData } from '@/lib/actions';
 
 export default function HomeFeed() {
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
   const [posts, setPosts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const cacheLoaded = useRef(false);
 
   useEffect(() => {
+    // 1. Try to load from local cache first for "instant" feel
+    if (typeof window !== 'undefined' && !cacheLoaded.current) {
+      const cached = localStorage.getItem('home_feed_cache');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          // Use cache if it's less than 1 hour old
+          const isFresh = (Date.now() - parsed.timestamp) < 1000 * 60 * 60;
+          if (parsed.posts && parsed.posts.length > 0) {
+            setPosts(parsed.posts);
+            if (isFresh) setIsLoading(false);
+          }
+        } catch (e) {
+          console.error('Failed to parse home feed cache', e);
+        }
+      }
+      cacheLoaded.current = true;
+    }
+
     async function loadData() {
       try {
         const user = await getCurrentUser();
@@ -24,6 +44,14 @@ export default function HomeFeed() {
             isLiked: Array.isArray(p.likesList) ? p.likesList.some((l: any) => l.userId === user?.id) : false,
           }));
           setPosts(adaptedPosts);
+          
+          // 2. Update cache with fresh data
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('home_feed_cache', JSON.stringify({
+              posts: adaptedPosts,
+              timestamp: Date.now()
+            }));
+          }
         }
       } catch (err) {
         console.error('Failed to load posts from DB:', err);
@@ -33,6 +61,8 @@ export default function HomeFeed() {
     }
     loadData();
   }, []);
+
+
 
   const filteredPosts = useMemo(() => {
     if (activeCategory === 'All') return posts;

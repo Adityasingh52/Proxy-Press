@@ -7,6 +7,7 @@ import MobileBottomNav from '@/app/components/Sidebar/MobileBottomNav';
 import './messages.css';
 import { 
   getConversations, 
+  getMessages,
   sendMessage as dbSendMessage, 
   uploadMedia, 
   createStory, 
@@ -84,6 +85,7 @@ interface Conversation {
   muted: boolean;
   vanishMode: boolean;
   vanishDuration: number;
+  historyLoaded?: boolean;
 }
 
 /* ─────────── MOCK DATA ─────────── */
@@ -170,6 +172,8 @@ function MessagesContent() {
   const [currentUserId, setCurrentUserId] = useState<string>('me');
   const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
 
+
+
   useEffect(() => {
     async function loadInitialData() {
       try {
@@ -231,46 +235,21 @@ function MessagesContent() {
             };
           });
 
-          setConversations(mappedConvs);
-        }
+          setConversations(prev => {
+            const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
+            
+            // Merge with existing conversations to preserve loaded messages
+            const merged = mappedConvs.map(newC => {
+              const existing = prev.find(p => p.id === newC.id);
+              return {
+                ...newC,
+                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages,
+                historyLoaded: existing?.historyLoaded || false
+              };
+            });
 
-        if (targetUserId) {
-           const existing = mappedConvs.find(c => c.user.id === targetUserId);
-           if (existing) {
-             setActiveChat(existing.id);
-           } else {
-             const targetUser = await getUserProfile(targetUserId);
-             if (targetUser) {
-               const newConv: Conversation = {
-                 id: `new_${targetUserId}`,
-                 user: {
-                   id: targetUser.id,
-                   name: targetUser.name,
-                   avatar: targetUser.profilePicture || '👤',
-                   profilePicture: targetUser.profilePicture,
-                   online: true,
-                 },
-                 lastMessage: '',
-                 lastMessageTime: '',
-                 unreadCount: 0,
-                 isTyping: false,
-                 muted: false,
-                 vanishMode: false,
-                 vanishDuration: 3600,
-                 messages: [],
-               };
-               setConversations(prev => {
-                   if (prev.find(c => c.id === newConv.id)) return prev;
-                   return [newConv, ...prev];
-               });
-               setActiveChat(newConv.id);
-             }
-           }
-        } else {
-            const chatId = searchParams.get('chatId');
-            if (chatId) {
-                setActiveChat(chatId);
-            }
+            return [...newDrafts, ...merged];
+          });
         }
 
         if (dbStories && dbStories.length > 0) {
@@ -376,17 +355,128 @@ function MessagesContent() {
             });
 
             // Always update state if we have new data to ensure correct sorting and order
-            const newConvs = prev.filter(c => String(c.id).startsWith('new_'));
-            return [...newConvs, ...newMappedConvs];
+            const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
+            
+            const merged = [...newDrafts, ...newMappedConvs].map(newC => {
+              const existing = prev.find(p => p.id === newC.id);
+              
+              // If the last message time changed, we need to refresh messages.
+              // This should track ALL conversations, not just the active one.
+              const isChanged = existing && newC.rawLastMessageTime !== existing.rawLastMessageTime;
+              const isActive = newC.id === activeChat;
+
+              return {
+                ...newC,
+                // If it's the active chat and it changed, clear messages to trigger re-fetch.
+                // If it's NOT active but changed, set historyLoaded to false so it re-fetches when opened.
+                messages: (isChanged && isActive) ? [] : (existing?.messages || []),
+                historyLoaded: isChanged ? false : (existing?.historyLoaded || false)
+              };
+            });
+
+            return merged;
           });
         }
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 10000); // 10 seconds
+    }, 4000); // 4 seconds for better responsiveness
 
     return () => clearInterval(pollInterval);
-  }, [currentUserId]);
+  }, [currentUserId, activeChat]);
+
+  // Handle userId or chatId from URL reactively
+  useEffect(() => {
+    const targetUserId = searchParams.get('userId');
+    const targetChatId = searchParams.get('chatId');
+    
+    if (targetUserId) {
+      // Find a REAL conversation with this user first
+      let existing = conversations.find(c => c.user.id === targetUserId && !String(c.id).startsWith('new_'));
+      
+      // If no real one exists, see if we have a draft
+      if (!existing) {
+        existing = conversations.find(c => c.user.id === targetUserId);
+      }
+
+      if (existing) {
+        if (activeChat !== existing.id) setActiveChat(existing.id);
+      } else if (currentUserId && currentUserId !== 'me') {
+        // If not in conversations yet, we might need to create a temporary new chat entry
+        getUserProfile(targetUserId).then(targetUser => {
+          if (targetUser) {
+            const displayName = (targetUser.name && targetUser.name.includes('/uploads/')) 
+              ? (targetUser.username || 'User') 
+              : (targetUser.name || 'Unknown User');
+              
+            const newConv: Conversation = {
+              id: `new_${targetUser.id}`,
+              user: {
+                id: targetUser.id,
+                name: displayName,
+                avatar: targetUser.profilePicture || (displayName ? displayName.substring(0, 1) : '👤'),
+                profilePicture: targetUser.profilePicture,
+                online: true,
+              },
+              lastMessage: '',
+              lastMessageTime: '',
+              unreadCount: 0,
+              isTyping: false,
+              muted: false,
+              vanishMode: false,
+              vanishDuration: 3600,
+              messages: [],
+            };
+            setConversations(prev => {
+              if (prev.find(c => c.id === newConv.id || c.user.id === targetUser.id)) return prev;
+              return [newConv, ...prev];
+            });
+            setActiveChat(newConv.id);
+          }
+        }).catch(err => console.error("Failed to fetch target user for messaging:", err));
+      }
+    } else if (targetChatId) {
+      if (activeChat !== targetChatId) setActiveChat(targetChatId);
+    }
+  }, [searchParams, currentUserId, conversations.length, activeChat]);
+
+  // Load messages when active chat changes
+  useEffect(() => {
+    if (!activeChat || activeChat.startsWith('new_')) return;
+
+    async function loadChatMessages() {
+      if (!activeChat) return;
+      const chatId = activeChat;
+      const existing = conversations.find(c => c.id === chatId);
+      // Only fetch if we don't have messages yet
+      if (existing && !existing.historyLoaded) {
+        try {
+          const dbMsgs = await getMessages(chatId);
+          const mappedMsgs = dbMsgs.map((m: any) => ({
+            id: m.id,
+            senderId: m.senderId === currentUserId ? 'me' : m.senderId,
+            text: m.text,
+            timestamp: formatMessageTime(m.timestamp),
+            seen: m.seen,
+            type: m.type || 'text',
+            attachment: m.attachment,
+            expiresAt: m.expiresAt ? new Date(m.expiresAt).getTime() : undefined,
+            isEdited: m.isEdited,
+            isDeleted: m.isDeleted,
+            replyTo: m.replyTo,
+          })).reverse();
+
+          setConversations(prev => prev.map(c => 
+            c.id === chatId ? { ...c, messages: mappedMsgs, historyLoaded: true } : c
+          ));
+        } catch (err) {
+          console.error('Failed to load messages:', err);
+        }
+      }
+    }
+
+    loadChatMessages();
+  }, [activeChat, currentUserId, conversations]);
   const [messageInput, setMessageInput] = useState('');
   const activeConversation = conversations.find(c => c.id === activeChat);
   const [searchQuery, setSearchQuery] = useState('');
@@ -747,7 +837,12 @@ function MessagesContent() {
       ));
     }
     setActiveChat(null);
-  }, [activeChat, activeConversation?.vanishMode]);
+    // Clear URL parameters so we don't immediately re-open the chat via effect
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.delete('userId');
+    newParams.delete('chatId');
+    router.replace(`/messages${newParams.toString() ? `?${newParams.toString()}` : ''}`, { scroll: false });
+  }, [activeChat, activeConversation?.vanishMode, searchParams, router]);
 
   const toggleVanishMode = async () => {
     if (!activeChat || activeChat.startsWith('new_')) return;
@@ -1433,6 +1528,11 @@ function MessagesContent() {
       if (res.conversationId && res.conversationId !== activeChat) {
         setActiveChat(res.conversationId);
         setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, id: res.conversationId } : c));
+        // Update URL to reflect the new permanent conversation ID
+        const newParams = new URLSearchParams(searchParams.toString());
+        newParams.delete('userId');
+        newParams.set('chatId', res.conversationId);
+        router.replace(`/messages?${newParams.toString()}`, { scroll: false });
       }
     } catch (err) {
       console.error('Send message error:', err);
@@ -1645,8 +1745,9 @@ function MessagesContent() {
   };
 
   /* ─── CONVERSATION LIST ─── */
-  const renderConversationList = () => (
-    <div className={`msg-list-panel ${activeChat ? 'msg-list-hidden-mobile' : ''}`}>
+  const renderConversationList = () => {
+    return (
+      <div className={`msg-list-panel ${activeChat ? 'msg-list-hidden-mobile' : ''}`}>
       {/* Header */}
       <div className="msg-list-header">
         <div className="msg-list-header-top">
@@ -1853,11 +1954,9 @@ function MessagesContent() {
           </div>
         )}
       </div>
-      <div className="msg-list-footer">
-        <MobileBottomNav />
-      </div>
     </div>
-  );
+    );
+  };
 
   /* ─── CHAT VIEW ─── */
   const renderChatView = () => {
@@ -2905,8 +3004,8 @@ function MessagesContent() {
   };
 
   return (
-    <div className="msg-page-wrapper">
-      <div className="msg-container">
+    <div className={`msg-page-wrapper ${(activeChat || activeStoryUserIdx !== null || showCreateStory || lightboxMedia) ? 'chat-active' : ''}`}>
+      <div className="msg-container animate-settingsFadeIn">
         {renderConversationList()}
         {renderChatView()}
         {renderChatInfo()}

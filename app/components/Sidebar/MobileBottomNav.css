@@ -6,19 +6,19 @@
   right: 0;
   background-color: var(--surface);
   border-top: 1px solid var(--border);
-  z-index: 50;
+  z-index: 1000001;
   padding-bottom: env(safe-area-inset-bottom); /* For iOS safe area */
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .mobile-nav-container {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  justify-content: space-around; /* Distribute items evenly */
+  align-items: stretch; /* Make items fill full height */
   height: 64px;
-  max-width: 500px;
+  max-width: 600px;
   margin: 0 auto;
-  padding: 0 16px;
+  padding: 0; /* Remove horizontal padding to maximize tap space */
   position: relative;
 }
 
@@ -28,10 +28,19 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  height: 100%; /* Fill full height of container */
   text-decoration: none;
   color: var(--text-muted);
-  gap: 4px;
-  transition: color var(--transition-fast);
+  gap: 2px;
+  transition: all 0.1s ease-out;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  outline: none;
+}
+
+.mobile-nav-item:active {
+  opacity: 0.7;
+  transform: scale(0.92); 
 }
 
 .mobile-nav-item.active {
@@ -83,9 +92,15 @@
   transition: transform var(--transition-base), box-shadow var(--transition-base);
 }
 
-.mobile-nav-create-btn:hover, .mobile-nav-create-btn:active {
+.mobile-nav-create-btn:hover {
   transform: translateY(-2px);
   box-shadow: 0 10px 20px rgba(99, 102, 241, 0.5);
+}
+
+.mobile-nav-create-btn:active {
+  transform: scale(0.9);
+  opacity: 0.8;
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
 }
 
 .mobile-nav-create-btn svg {

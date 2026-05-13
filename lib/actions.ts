@@ -6,39 +6,55 @@ import * as schema from './db/schema';
 import { writeFile, mkdir, unlink } from 'fs/promises';
 import { join } from 'path';
 import { randomUUID } from 'node:crypto';
-import { eq, and, ne, or } from 'drizzle-orm';
+import { eq, and, ne, or, sql, isNotNull, lte, inArray, desc } from 'drizzle-orm';
 import { revalidatePath } from 'next/cache';
-import { sql } from 'drizzle-orm';
 import { cookies } from 'next/headers';
+import { withCache, redis } from './redis';
 
 export async function getInitialData(userId?: string) {
-  const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
-    queries.getPosts(userId),
-    queries.getUsers(),
-    queries.getCategories(),
-    queries.getTrendingTopics(),
-    queries.getAnnouncements(),
-    queries.getNotifications(userId),
-    queries.getStories(userId),
-  ]);
+  const fetcher = async () => {
+    const [posts, authors, categories, trendingTopics, announcements, notifications, stories] = await Promise.all([
+      queries.getPosts(userId),
+      queries.getUsers(),
+      queries.getCategories(),
+      queries.getTrendingTopics(),
+      queries.getAnnouncements(),
+      queries.getNotifications(userId),
+      queries.getStories(userId),
+    ]);
+
+    return {
+      posts,
+      authors,
+      categories,
+      trendingTopics,
+      announcements,
+      notifications,
+      stories,
+    };
+  };
+
+  // Only cache the public feed (no userId) to save memory
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_initial_data', fetcher, 300); // 5 mins cache for public
 
   // Deep clone to ensure all data is perfectly serializable POJOs for RSC stream
-  return JSON.parse(JSON.stringify({
-    posts,
-    authors,
-    categories,
-    trendingTopics,
-    announcements,
-    notifications,
-    stories,
-  }));
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function getStories(userId?: string) {
-  const allStories = await queries.getStories(userId);
-  // Filter out any story groupings that have 0 slides (e.g. all expired)
-  const validStories = allStories.filter((s: any) => s.slides && s.slides.length > 0);
-  return JSON.parse(JSON.stringify(validStories));
+  const fetcher = async () => {
+    const allStories = await queries.getStories(userId);
+    // Filter out any story groupings that have 0 slides (e.g. all expired)
+    return allStories.filter((s: any) => s.slides && s.slides.length > 0);
+  };
+
+  const data = userId 
+    ? await fetcher() 
+    : await withCache('public_stories', fetcher, 120); // 2 mins cache for stories
+
+  return JSON.parse(JSON.stringify(data));
 }
 
 export async function markStoryAsSeen(storyUserId: string) {
@@ -91,9 +107,27 @@ export async function getPostDetail(slug: string) {
   return JSON.parse(JSON.stringify({ post, related, canComment }));
 }
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export async function getConversations(userId: string) {
+  noStore();
   await cleanupExpiredMessages();
-  return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
+  // Cache conversations list per user for 15 seconds (polling will refresh)
+  return withCache(
+    `conversations:${userId}`,
+    async () => JSON.parse(JSON.stringify(await queries.getConversations(userId))),
+    15
+  );
+}
+
+export async function getMessages(conversationId: string) {
+  noStore();
+  // Cache messages per conversation for 30 seconds (invalidated on new message)
+  return withCache(
+    `messages:${conversationId}`,
+    async () => JSON.parse(JSON.stringify(await queries.getMessages(conversationId))),
+    30
+  );
 }
 
 import { v2 as cloudinary } from 'cloudinary';
@@ -108,6 +142,10 @@ cloudinary.config({
  * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    throw new Error('Cloudinary environment variables are missing. Please check your Vercel settings.');
+  }
+
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
   
@@ -189,6 +227,12 @@ export async function createPost(data: {
     console.error('Failed to create new post notifications:', err);
   }
 
+  // Invalidate Public Cache and User Profile Cache
+  await Promise.all([
+    redis.del('public_initial_data').catch(() => null),
+    redis.del(`user_profile_data:${data.authorId}`).catch(() => null)
+  ]);
+
   return { success: true, id };
 }
 
@@ -216,24 +260,49 @@ export async function sendMessage(data: {
     });
     if (block) throw new Error('Cannot send message to a blocked user');
 
-    const newConvId = `c${Date.now()}`;
+    // Prevent duplicates: Check if a conversation ALREADY exists between these two users
+    const senderConvs = await db.select({ conversationId: schema.conversationParticipants.conversationId })
+      .from(schema.conversationParticipants)
+      .where(eq(schema.conversationParticipants.userId, data.senderId));
     
-    const nowIso = new Date().toISOString();
+    const senderConvIds = senderConvs.map(c => c.conversationId).filter((id): id is string => id !== null);
     
-    // Create the conversation
-    await db.insert(schema.conversations).values({
-      id: newConvId,
-      lastMessage: data.text,
-      lastMessageTime: nowIso,
-    });
+    let existingConvId = null;
+    if (senderConvIds.length > 0) {
+      const targetConvs = await db.select({ conversationId: schema.conversationParticipants.conversationId })
+        .from(schema.conversationParticipants)
+        .where(
+          and(
+            eq(schema.conversationParticipants.userId, targetUserId),
+            inArray(schema.conversationParticipants.conversationId, senderConvIds)
+          )
+        );
+      if (targetConvs.length > 0) {
+        existingConvId = targetConvs[0].conversationId;
+      }
+    }
 
-    // Add participants
-    await db.insert(schema.conversationParticipants).values([
-      { conversationId: newConvId, userId: data.senderId },
-      { conversationId: newConvId, userId: targetUserId }
-    ]);
+    if (existingConvId) {
+      // Reuse existing conversation
+      finalConversationId = existingConvId;
+    } else {
+      // Create new conversation
+      const newConvId = `c${Date.now()}`;
+      const nowIso = new Date().toISOString();
+      
+      await db.insert(schema.conversations).values({
+        id: newConvId,
+        lastMessage: data.text,
+        lastMessageTime: nowIso,
+      });
 
-    finalConversationId = newConvId;
+      await db.insert(schema.conversationParticipants).values([
+        { conversationId: newConvId, userId: data.senderId },
+        { conversationId: newConvId, userId: targetUserId }
+      ]);
+
+      finalConversationId = newConvId;
+    }
   } else {
     // Check blocks for existing conversation
     const participants = await db.query.conversationParticipants.findMany({
@@ -288,8 +357,26 @@ export async function sendMessage(data: {
   // Cleanup expired messages in this conversation (triggered on new message)
   await cleanupExpiredMessages();
 
+  // Invalidate Redis caches for instant message delivery
+  await invalidateConversationCache(finalConversationId);
+
   revalidatePath('/messages');
   return { success: true, id: messageId, conversationId: finalConversationId };
+}
+
+// Helper to bust Redis caches for a conversation and its participants
+async function invalidateConversationCache(conversationId: string) {
+  try {
+    const participants = await db.query.conversationParticipants.findMany({
+      where: eq(schema.conversationParticipants.conversationId, conversationId)
+    });
+    await Promise.all([
+      redis.del(`messages:${conversationId}`).catch(() => null),
+      ...participants.map(p => redis.del(`conversations:${p.userId}`).catch(() => null)),
+    ]);
+  } catch (e) {
+    console.error('Cache invalidation error:', e);
+  }
 }
 
 export async function updateConversationMute(conversationId: string, muted: boolean) {
@@ -297,6 +384,7 @@ export async function updateConversationMute(conversationId: string, muted: bool
     .set({ muted })
     .where(eq(schema.conversations.id, conversationId));
   
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
@@ -309,6 +397,7 @@ export async function updateConversationVanishMode(conversationId: string, vanis
     })
     .where(eq(schema.conversations.id, conversationId));
   
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
@@ -322,6 +411,9 @@ export async function editMessage(messageId: string, newText: string) {
       })
       .where(eq(schema.messages.id, messageId));
     
+    // Invalidate cache: find the conversation for this message
+    const msg = await db.query.messages.findFirst({ where: eq(schema.messages.id, messageId) });
+    if (msg?.conversationId) await invalidateConversationCache(msg.conversationId);
     revalidatePath('/messages');
     return { success: true };
   } catch (err) {
@@ -341,6 +433,9 @@ export async function deleteMessage(messageId: string) {
       })
       .where(eq(schema.messages.id, messageId));
     
+    // Invalidate cache: find the conversation for this message
+    const msg = await db.query.messages.findFirst({ where: eq(schema.messages.id, messageId) });
+    if (msg?.conversationId) await invalidateConversationCache(msg.conversationId);
     revalidatePath('/messages');
     return { success: true };
   } catch (err) {
@@ -394,6 +489,7 @@ export async function deleteConversation(conversationId: string) {
     await db.delete(schema.conversations)
       .where(eq(schema.conversations.id, conversationId));
     
+    await invalidateConversationCache(conversationId);
     revalidatePath('/messages');
     revalidatePath('/', 'layout');
     return { success: true };
@@ -408,7 +504,10 @@ export async function deleteConversation(conversationId: string) {
 export async function cleanupExpiredMessages() {
   const now = new Date();
   await db.delete(schema.messages)
-    .where(sql`${schema.messages.expiresAt} IS NOT NULL AND ${schema.messages.expiresAt} <= ${now.getTime()}`);
+    .where(and(
+      isNotNull(schema.messages.expiresAt),
+      lte(schema.messages.expiresAt, now)
+    ));
 }
 
 export async function markMessagesAsSeen(conversationId: string, userId: string) {
@@ -423,6 +522,7 @@ export async function markMessagesAsSeen(conversationId: string, userId: string)
       eq(schema.messages.seen, false)
     ));
 
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
@@ -454,6 +554,9 @@ export async function createStory(data: {
     mediaUrl: data.mediaUrl,
     timestamp: 'Just now',
   });
+
+  // Invalidate Stories Cache
+  await redis.del('public_stories').catch(() => null);
 
   return { success: true, id: slideId };
 }
@@ -835,6 +938,9 @@ export async function completeOnboarding(data: {
     maxAge: 60 * 60 * 24 * 7,
   });
 
+  // Invalidate User Profile Cache
+  await redis.del(`user_profile_data:${userId}`).catch(() => null);
+
   revalidatePath('/');
   revalidatePath('/profile');
   return { success: true };
@@ -855,9 +961,20 @@ export async function logout() {
   return { success: true };
 }
 
+import { getServerSession } from "next-auth";
+import { authOptions } from "./auth";
+
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-  const userId = cookieStore.get('proxypress_session')?.value;
+  let userId = cookieStore.get('proxypress_session')?.value;
+
+  if (!userId) {
+    const session = await getServerSession(authOptions);
+    if (session?.user && (session.user as any).id) {
+      userId = (session.user as any).id;
+    }
+  }
+
   if (!userId) return null;
 
   const user = await db.query.users.findFirst({
@@ -868,8 +985,8 @@ export async function getCurrentUser() {
 }
 
 export async function getUserProfile(idOrHandle: string) {
-  const cookieStore = await cookies();
-  const currentUserId = cookieStore.get('proxypress_session')?.value;
+  const currentUser = await getCurrentUser();
+  const currentUserId = currentUser?.id;
 
   // 1. Try fetching by exact ID
   let user = await db.query.users.findFirst({
@@ -897,6 +1014,62 @@ export async function getUserProfile(idOrHandle: string) {
   }
 
   return JSON.parse(JSON.stringify(user));
+}
+
+export async function getProfileData(idOrHandle: string) {
+  const currentUser = await getCurrentUser();
+  const currentUserId = currentUser?.id;
+
+  // Optimization: Use Redis for the user's own profile (sub-millisecond speed)
+  const isSelf = currentUserId && (idOrHandle === currentUserId || idOrHandle === `@${currentUserId}`);
+  if (isSelf) {
+    try {
+      const cached = await redis.get(`user_profile_data:${currentUserId}`);
+      if (cached) return typeof cached === 'string' ? JSON.parse(cached) : cached;
+    } catch (e) {
+      console.error('Redis profile fetch error:', e);
+    }
+  }
+
+  // 1. Fetch user profile
+  const user = await getUserProfile(idOrHandle);
+  if (!user) return null;
+
+  const targetUserId = user.id;
+
+  // 2. Fetch all related data in parallel
+  const [posts, followCounts, followStatus, blockStatus, requestStatus] = await Promise.all([
+    db.query.posts.findMany({
+      where: eq(schema.posts.authorId, targetUserId),
+      orderBy: (posts, { desc }) => [desc(posts.publishedAt)],
+    }),
+    getFollowCounts(targetUserId),
+    currentUserId ? getFollowStatus(targetUserId) : Promise.resolve({ following: false }),
+    currentUserId ? getBlockStatus(targetUserId) : Promise.resolve({ blocked: false, muted: false }),
+    currentUserId ? getFollowRequestStatus(targetUserId) : Promise.resolve({ requested: false }),
+  ]);
+
+  const profileData = {
+    user,
+    posts,
+    followCounts,
+    isFollowing: followStatus.following,
+    isBlocked: blockStatus.blocked,
+    isMuted: blockStatus.muted,
+    isRequested: requestStatus.requested,
+    currentUserId,
+  };
+
+  // Cache in Redis for self-profile
+  if (isSelf) {
+    try {
+      await redis.set(`user_profile_data:${currentUserId}`, JSON.stringify(profileData), { ex: 300 });
+    } catch (e) {
+      console.error('Redis profile save error:', e);
+    }
+  }
+
+  return JSON.parse(JSON.stringify(profileData));
 }
 
 // ─── Safety Features ───
@@ -1621,6 +1794,9 @@ export async function updatePost(postId: string, data: {
 
   revalidatePath('/');
   revalidatePath(`/article/${post.slug}`);
+  
+  // Invalidate Public Cache
+  await redis.del('public_initial_data').catch(() => null);
   
   return { success: true };
 }

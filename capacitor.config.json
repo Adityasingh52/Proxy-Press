@@ -1,0 +1,15 @@
+{
+  "appId": "com.proxypress.app",
+  "appName": "Proxy-Press",
+  "webDir": "out",
+  "server": {
+    "url": "https://proxy-press-omega.vercel.app",
+    "cleartext": true
+  },
+  "android": {
+    "backgroundColor": "#ffffff"
+  },
+  "ios": {
+    "contentInset": "always"
+  }
+}
