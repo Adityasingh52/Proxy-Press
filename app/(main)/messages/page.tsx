@@ -355,20 +355,22 @@ function MessagesContent() {
             });
 
             // Always update state if we have new data to ensure correct sorting and order
-            const newConvs = prev.filter(c => String(c.id).startsWith('new_'));
-            const merged = [...newConvs, ...newMappedConvs].map(newC => {
+            const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
+            
+            const merged = [...newDrafts, ...newMappedConvs].map(newC => {
               const existing = prev.find(p => p.id === newC.id);
               
-              // If this is the active chat and the last message time changed, 
-              // we set messages to [] to trigger the re-fetch in the loadChatMessages effect.
-              const shouldRefreshMessages = existing && 
-                                           newC.id === activeChat && 
-                                           newC.rawLastMessageTime !== existing.rawLastMessageTime;
+              // If the last message time changed, we need to refresh messages.
+              // This should track ALL conversations, not just the active one.
+              const isChanged = existing && newC.rawLastMessageTime !== existing.rawLastMessageTime;
+              const isActive = newC.id === activeChat;
 
               return {
                 ...newC,
-                messages: shouldRefreshMessages ? [] : (existing?.messages || []),
-                historyLoaded: shouldRefreshMessages ? false : (existing?.historyLoaded || false)
+                // If it's the active chat and it changed, clear messages to trigger re-fetch.
+                // If it's NOT active but changed, set historyLoaded to false so it re-fetches when opened.
+                messages: (isChanged && isActive) ? [] : (existing?.messages || []),
+                historyLoaded: isChanged ? false : (existing?.historyLoaded || false)
               };
             });
 
@@ -378,10 +380,10 @@ function MessagesContent() {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 10000); // 10 seconds
+    }, 4000); // 4 seconds for better responsiveness
 
     return () => clearInterval(pollInterval);
-  }, [currentUserId]);
+  }, [currentUserId, activeChat]);
 
   // Handle userId or chatId from URL reactively
   useEffect(() => {
