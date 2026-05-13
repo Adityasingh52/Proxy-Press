@@ -5,6 +5,7 @@ import type { Category, Post } from '@/lib/data';
 import PostCard from './PostCard';
 import CategoryFilters from './CategoryFilters';
 import { getInitialData, getCurrentUser, getProfileData } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
 
 export default function HomeFeed() {
   const [activeCategory, setActiveCategory] = useState<Category | 'All'>('All');
@@ -13,24 +14,19 @@ export default function HomeFeed() {
   const cacheLoaded = useRef(false);
 
   useEffect(() => {
-    // 1. Try to load from local cache first for "instant" feel
-    if (typeof window !== 'undefined' && !cacheLoaded.current) {
-      const cached = localStorage.getItem('home_feed_cache');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          // Use cache if it's less than 1 hour old
-          const isFresh = (Date.now() - parsed.timestamp) < 1000 * 60 * 60;
-          if (parsed.posts && parsed.posts.length > 0) {
-            setPosts(parsed.posts);
-            if (isFresh) setIsLoading(false);
-          }
-        } catch (e) {
-          console.error('Failed to parse home feed cache', e);
-        }
+    async function loadCache() {
+      if (cacheLoaded.current) return;
+      
+      const cached = await OfflineManager.loadData<any>('home_feed_cache');
+      if (cached && cached.posts && cached.posts.length > 0) {
+        console.log('[Offline] Instant home feed load');
+        setPosts(cached.posts);
+        setIsLoading(false);
       }
       cacheLoaded.current = true;
     }
+
+    loadCache();
 
     async function loadData() {
       try {
@@ -46,12 +42,10 @@ export default function HomeFeed() {
           setPosts(adaptedPosts);
           
           // 2. Update cache with fresh data
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('home_feed_cache', JSON.stringify({
-              posts: adaptedPosts,
-              timestamp: Date.now()
-            }));
-          }
+          OfflineManager.saveData('home_feed_cache', {
+            posts: adaptedPosts,
+            timestamp: Date.now()
+          });
         }
       } catch (err) {
         console.error('Failed to load posts from DB:', err);
