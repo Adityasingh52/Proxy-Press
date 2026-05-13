@@ -66,12 +66,19 @@ const navItems = [
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('proxypress_user_id');
+  const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // 0. Instant Cache Load (Run this first, before anything else)
+  useEffect(() => {
+    async function loadInstantId() {
+      const cachedId = await OfflineManager.loadData<string>('last_user_id');
+      if (cachedId) {
+        setCurrentUserId(cachedId);
+      }
     }
-    return null;
-  });
+    loadInstantId();
+  }, []);
 
   // 1. Initial Data Load & Periodic Refresh (Mount Only)
   useEffect(() => {
@@ -106,6 +113,7 @@ export default function MobileBottomNav() {
   // 2. Lightweight Pathname Refresh (Only for notifications/badge)
   useEffect(() => {
     getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
+    setOptimisticTab(null); // Sync back to real path when navigation finishes
   }, [pathname]);
 
   return (
@@ -116,15 +124,16 @@ export default function MobileBottomNav() {
           
           // CRITICAL: Ensure the Profile link is ALWAYS direct and never depends on a slow redirect
           if (href === '/profile') {
-            const storedId = typeof window !== 'undefined' ? (currentUserId || localStorage.getItem('proxypress_user_id')) : null;
-            if (storedId) {
-              href = `/profile/${storedId}`;
+            if (currentUserId) {
+              href = `/profile/${currentUserId}`;
             }
           }
 
-          const isActive = item.href === '/' 
-            ? pathname === '/' 
-            : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/'));
+          const isActive = optimisticTab 
+            ? item.href === optimisticTab
+            : (item.href === '/' 
+              ? pathname === '/' 
+              : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/')));
 
           const badge = item.href === '/messages' ? unreadCount : 0;
           
@@ -145,6 +154,7 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={href}
+              onClick={() => setOptimisticTab(item.href)}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">
