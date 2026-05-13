@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import '../profile.css';
 import Link from 'next/link';
 import { blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -118,45 +119,57 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
 
   // Cache loading logic
   useEffect(() => {
-    if (typeof window !== 'undefined' && !cacheLoaded.current) {
-      const cached = localStorage.getItem(`profile_cache_${id}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          // Only use cache if we don't have initialData or if the cache is very recent
-          if (!initialData) {
-            setUser(parsed.user);
-            setUserPosts(parsed.posts);
-            setIsFollowing(parsed.isFollowing);
-            setFollowersCount(parsed.followCounts?.followers || 0);
-            setFollowingCount(parsed.followCounts?.following || 0);
-            setIsLoading(false);
-          }
-          cacheLoaded.current = true;
-        } catch (e) {
-          console.error("Failed to load profile cache", e);
-        }
+    async function loadCache() {
+      if (cacheLoaded.current) return;
+      
+      const cached = await OfflineManager.loadData<any>(`profile_cache_${id}`);
+      if (cached && !initialData) {
+        console.log(`[Offline] Instant profile load for: ${id}`);
+        setUser(cached.user);
+        setUserPosts(cached.posts);
+        setIsFollowing(cached.isFollowing);
+        setFollowersCount(cached.followCounts?.followers || 0);
+        setFollowingCount(cached.followCounts?.following || 0);
+        setIsLoading(false);
       }
+      cacheLoaded.current = true;
     }
+
+    loadCache();
 
     // Background refresh if data is from cache or we want to ensure freshness
     async function refreshProfile() {
       try {
         const freshData = await getProfileData(id);
         if (freshData) {
-          setUser({
+          const updatedUser = {
             ...freshData.user,
             postsCount: freshData.posts?.length || 0,
             statusDisplay: freshData.statusDisplay || null
-          });
+          };
+          setUser(updatedUser);
           setUserPosts(freshData.posts || []);
           setIsFollowing(freshData.isFollowing || false);
           setFollowersCount(freshData.followCounts?.followers || 0);
           setFollowingCount(freshData.followCounts?.following || 0);
+          
           if (freshData.currentUserId) {
             setCurrentUserId(freshData.currentUserId);
-            localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
+            OfflineManager.saveData('last_user_id', freshData.currentUserId);
           }
+
+          // Update Cache
+          OfflineManager.saveData(`profile_cache_${id}`, {
+            user: updatedUser,
+            posts: freshData.posts || [],
+            isFollowing: freshData.isFollowing || false,
+            followCounts: { 
+              followers: freshData.followCounts?.followers || 0, 
+              following: freshData.followCounts?.following || 0 
+            },
+            timestamp: Date.now()
+          });
+          
           setIsLoading(false);
         } else {
           setIsLoading(false);
@@ -170,17 +183,16 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     refreshProfile();
   }, [id, initialData]);
 
-  // Cache saving logic
+  // Manual cache save on user updates
   useEffect(() => {
-    if (typeof window !== 'undefined' && user) {
-      const cacheData = {
+    if (user) {
+      OfflineManager.saveData(`profile_cache_${id}`, {
         user,
         posts: userPosts,
         isFollowing,
         followCounts: { followers: followersCount, following: followingCount },
         timestamp: Date.now()
-      };
-      localStorage.setItem(`profile_cache_${id}`, JSON.stringify(cacheData));
+      });
     }
   }, [user, userPosts, id, isFollowing, followersCount, followingCount]);
 
