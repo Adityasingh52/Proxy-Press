@@ -2992,7 +2992,7 @@ function MessagesContent() {
   };
 
   return (
-    <div className={`msg-page-wrapper ${activeChat ? 'chat-active' : ''}`}>
+    <div className={`msg-page-wrapper ${(activeChat || activeStoryUserIdx !== null || showCreateStory || lightboxMedia) ? 'chat-active' : ''}`}>
       <div className="msg-container animate-settingsFadeIn">
         {renderConversationList()}
         {renderChatView()}
