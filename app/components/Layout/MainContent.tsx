@@ -15,7 +15,7 @@ export default function MainContent({ children }: { children: React.ReactNode })
   const isHome = pathname === '/';
 
   const showCondensedLayout = isProfile || isCreate || isExplore || isSettings || isArticle;
-  const hasMobileHeader = isNotifications || isMessages || isHome;
+  const hasMobileHeader = isNotifications || isHome;
 
   return (
     <main 

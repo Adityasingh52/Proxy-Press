@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
@@ -67,8 +67,16 @@ const navItems = [
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
+  
+  // Hide footer when in a DM
+  const chatId = searchParams.get('chatId');
+  const userId = searchParams.get('userId');
+  const isInsideChat = pathname === '/messages' && (chatId || userId);
+
+  if (isInsideChat) return null;
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     // Instant fallback from localStorage
     if (typeof window !== 'undefined') {

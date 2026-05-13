@@ -367,7 +367,8 @@ function CreatePostContent() {
     try {
       const user = await getCurrentUser();
       if (!user) {
-        alert('You must be logged in to post');
+        setPublishing(false);
+        alert('Your session has expired. Please log in again to post.');
         router.push('/login');
         return;
       }
@@ -850,7 +851,7 @@ function CreatePostContent() {
         <div 
           className="camera-overlay"
           style={{
-            position: 'fixed', inset: 0, zIndex: 1000,
+            position: 'fixed', inset: 0, zIndex: 9999,
             background: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column',
             animation: 'fade-in 0.3s ease'
           }}

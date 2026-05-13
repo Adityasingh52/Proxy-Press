@@ -19,7 +19,7 @@ export default function MobileHeader() {
   const isSettings = pathname.startsWith('/settings');
   const isAdmin = pathname.startsWith('/admin');
 
-  if (isProfile || isCreate || isExplore || isSettings || isAdmin || isArticle) return null;
+  if (isProfile || isCreate || isExplore || isSettings || isAdmin || isArticle || isMessages) return null;
 
   return (
     <header className="mobile-header">
