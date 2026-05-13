@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
@@ -66,6 +66,7 @@ const navItems = [
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -83,6 +84,12 @@ export default function MobileBottomNav() {
 
   // 1. Initial Data Load & Periodic Refresh (Mount Only)
   useEffect(() => {
+    // PREFETCH all routes for instant navigation
+    router.prefetch('/');
+    router.prefetch('/explore');
+    router.prefetch('/create');
+    router.prefetch('/messages');
+
     async function initLoad() {
       try {
         const actions = await import('@/lib/actions');
@@ -90,15 +97,18 @@ export default function MobileBottomNav() {
         
         if (user) {
           setCurrentUserId(user.id);
-          localStorage.setItem('proxypress_user_id', user.id);
+          OfflineManager.saveData('last_user_id', user.id);
           
+          // Prefetch the specific profile route once we have the ID
+          router.prefetch(`/profile/${user.id}`);
+
           // Refresh count immediately
           const count = await actions.getUnreadMessageCountAction();
           setUnreadCount(count);
           const profileData = await actions.getProfileData(user.id);
 
           if (profileData) {
-            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({ ...profileData, timestamp: Date.now() }));
+            OfflineManager.saveData(`profile_cache_${user.id}`, { ...profileData, timestamp: Date.now() });
           }
         }
       } catch (e) {
@@ -109,7 +119,7 @@ export default function MobileBottomNav() {
     initLoad();
     const interval = setInterval(initLoad, 20000); // 20s interval is enough
     return () => clearInterval(interval);
-  }, []);
+  }, [router]);
 
   // 2. Lightweight Pathname Refresh (Only for notifications/badge)
   useEffect(() => {
