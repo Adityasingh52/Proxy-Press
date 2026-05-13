@@ -170,25 +170,8 @@ function MessagesContent() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('me');
   const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
-  const cacheLoaded = useRef(false);
 
-  // 1. Instant Load from Cache
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !cacheLoaded.current) {
-      const cached = localStorage.getItem('messages_cache');
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed.conversations)) {
-            setConversations(parsed.conversations);
-          }
-        } catch (e) {
-          console.error('Failed to load messages cache', e);
-        }
-      }
-      cacheLoaded.current = true;
-    }
-  }, []);
+
 
   useEffect(() => {
     async function loadInitialData() {
@@ -255,14 +238,6 @@ function MessagesContent() {
             const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
             return [...newDrafts, ...mappedConvs];
           });
-          
-          // Save to cache
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('messages_cache', JSON.stringify({
-              conversations: mappedConvs,
-              timestamp: Date.now()
-            }));
-          }
         }
 
         if (dbStories && dbStories.length > 0) {
@@ -378,12 +353,6 @@ function MessagesContent() {
               };
             });
 
-            // Update cache during polling too
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('messages_cache', JSON.stringify({
-                conversations: merged,
-                timestamp: Date.now()
-              }));
             }
 
             return merged;
@@ -513,51 +482,8 @@ function MessagesContent() {
 
 
   /* ─── Story State ─── */
-  const [stories, setStories] = useState<UserStory[]>(() => {
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('stories_cache');
-      if (cached) {
-        try {
-          const { stories: cachedStories } = JSON.parse(cached);
-          if (Array.isArray(cachedStories)) {
-            return cachedStories.map((s: any) => ({
-              userId: s.userId,
-              userName: s.user?.name || 'User',
-              userAvatar: (s.user?.name || 'U').substring(0, 1),
-              userProfilePicture: s.user?.profilePicture,
-              seen: s.seen,
-              slides: s.slides.map((sl: any) => ({
-                ...sl,
-                type: sl.type || 'image',
-                timestamp: sl.timestamp || 'Just now'
-              }))
-            }));
-          }
-        } catch (e) {}
-      }
-    }
-    return [];
-  });
-  const [myStories, setMyStories] = useState<StorySlide[]>(() => {
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem('stories_cache');
-      if (cached) {
-        try {
-          const { stories: cachedStories } = JSON.parse(cached);
-          const myId = localStorage.getItem('proxypress_user_id');
-          const myDbStory = cachedStories.find((s: any) => s.userId === myId);
-          if (myDbStory && myDbStory.slides) {
-            return myDbStory.slides.map((s: any) => ({
-              ...s,
-              type: s.type || 'image',
-              timestamp: s.timestamp || 'Just now'
-            }));
-          }
-        } catch (e) {}
-      }
-    }
-    return [];
-  });
+  const [stories, setStories] = useState<UserStory[]>([]);
+  const [myStories, setMyStories] = useState<StorySlide[]>([]);
   const [activeStoryUserIdx, setActiveStoryUserIdx] = useState<number | null>(null);
   const [activeSlideIdx, setActiveSlideIdx] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
@@ -1794,13 +1720,7 @@ function MessagesContent() {
       {/* Header */}
       <div className="msg-list-header">
         <div className="msg-list-header-top">
-          <button className="msg-app-back-btn" onClick={() => router.push('/')} aria-label="Back to home">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-            </svg>
-          </button>
           <h1 className="msg-list-title">Messages</h1>
-          <div style={{ width: 40 }} /> {/* Spacer to center title */}
         </div>
         {/* Search */}
         <div className="msg-search-wrapper">
@@ -2154,19 +2074,6 @@ function MessagesContent() {
                 onTouchStart={() => handleMsgTouchStart(msg)}
                 onTouchEnd={handleMsgTouchEnd}
               >
-                {!isMine && (
-                  <div className="msg-bubble-avatar-wrapper">
-                    {isLastInGroup ? (
-                      <div className="msg-bubble-avatar">
-                        {user.profilePicture ? (
-                          <img src={user.profilePicture} alt="" className="msg-avatar-img" />
-                        ) : user.avatar}
-                      </div>
-                    ) : (
-                      <div className="msg-bubble-avatar-spacer" />
-                    )}
-                  </div>
-                )}
 
                 <div className="msg-bubble-content-wrapper">
                   <div className={`msg-bubble ${isMine ? 'mine' : 'theirs'} ${msg.type === 'heart' ? 'heart-msg' : ''} ${msg.attachment ? 'has-attachment' : ''} ${msg.isDeleted ? 'deleted' : ''}`}>
@@ -2346,22 +2253,6 @@ function MessagesContent() {
                     </div>
                   )}
                 </div>
-
-                {isMine && (
-                  <div className="msg-bubble-avatar-wrapper">
-                    {isLastInGroup ? (
-                      <div className="msg-bubble-avatar">
-                        {currentUserProfilePic ? (
-                          <img src={currentUserProfilePic} alt="" className="msg-avatar-img" />
-                        ) : (
-                          <div className="msg-bubble-avatar-placeholder">Me</div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="msg-bubble-avatar-spacer" />
-                    )}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -3082,7 +2973,7 @@ function MessagesContent() {
   };
 
   return (
-    <div className="msg-page-wrapper">
+    <div className={`msg-page-wrapper ${activeChat ? 'chat-active' : ''}`}>
       <div className="msg-container animate-settingsFadeIn">
         {renderConversationList()}
         {renderChatView()}
