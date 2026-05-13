@@ -236,7 +236,17 @@ function MessagesContent() {
 
           setConversations(prev => {
             const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
-            return [...newDrafts, ...mappedConvs];
+            
+            // Merge with existing conversations to preserve loaded messages
+            const merged = mappedConvs.map(newC => {
+              const existing = prev.find(p => p.id === newC.id);
+              return {
+                ...newC,
+                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages
+              };
+            });
+
+            return [...newDrafts, ...merged];
           });
         }
 
@@ -346,10 +356,16 @@ function MessagesContent() {
             const newConvs = prev.filter(c => String(c.id).startsWith('new_'));
             const merged = [...newConvs, ...newMappedConvs].map(newC => {
               const existing = prev.find(p => p.id === newC.id);
+              
+              // If this is the active chat and the last message time changed, 
+              // we set messages to [] to trigger the re-fetch in the loadChatMessages effect.
+              const shouldRefreshMessages = existing && 
+                                           newC.id === activeChat && 
+                                           newC.rawLastMessageTime !== existing.rawLastMessageTime;
+
               return {
                 ...newC,
-                // Preserve existing messages if we have them and the new one is empty
-                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages
+                messages: shouldRefreshMessages ? [] : (existing?.messages || [])
               };
             });
 
@@ -448,7 +464,7 @@ function MessagesContent() {
     }
 
     loadChatMessages();
-  }, [activeChat, currentUserId]);
+  }, [activeChat, currentUserId, conversations]);
   const [messageInput, setMessageInput] = useState('');
   const activeConversation = conversations.find(c => c.id === activeChat);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1500,6 +1516,11 @@ function MessagesContent() {
       if (res.conversationId && res.conversationId !== activeChat) {
         setActiveChat(res.conversationId);
         setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, id: res.conversationId } : c));
+        // Update URL to reflect the new permanent conversation ID
+        const newParams = new URLSearchParams(searchParams.toString());
+        newParams.delete('userId');
+        newParams.set('chatId', res.conversationId);
+        router.replace(`/messages?${newParams.toString()}`, { scroll: false });
       }
     } catch (err) {
       console.error('Send message error:', err);
