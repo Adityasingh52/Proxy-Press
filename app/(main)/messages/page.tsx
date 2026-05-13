@@ -391,7 +391,14 @@ function MessagesContent() {
     const targetChatId = searchParams.get('chatId');
     
     if (targetUserId) {
-      const existing = conversations.find(c => c.user.id === targetUserId);
+      // Find a REAL conversation with this user first
+      let existing = conversations.find(c => c.user.id === targetUserId && !String(c.id).startsWith('new_'));
+      
+      // If no real one exists, see if we have a draft
+      if (!existing) {
+        existing = conversations.find(c => c.user.id === targetUserId);
+      }
+
       if (existing) {
         if (activeChat !== existing.id) setActiveChat(existing.id);
       } else if (currentUserId && currentUserId !== 'me') {

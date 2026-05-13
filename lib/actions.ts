@@ -108,12 +108,16 @@ export async function getPostDetail(slug: string) {
   return JSON.parse(JSON.stringify({ post, related, canComment }));
 }
 
+import { unstable_noStore as noStore } from 'next/cache';
+
 export async function getConversations(userId: string) {
+  noStore();
   await cleanupExpiredMessages();
   return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
 }
 
 export async function getMessages(conversationId: string) {
+  noStore();
   return JSON.parse(JSON.stringify(await queries.getMessages(conversationId)));
 }
 
