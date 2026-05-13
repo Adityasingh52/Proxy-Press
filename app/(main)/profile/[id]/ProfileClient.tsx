@@ -644,7 +644,128 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
         </div>
       )}
 
-      {/* Modals for block, mute, report, follow-list, etc. omitted for brevity */}
+      {/* ─── Follow Modal (Followers/Following) ─── */}
+      {showFollowModal && (
+        <div className="modal-overlay" onClick={() => setShowFollowModal(null)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'center', position: 'relative' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{showFollowModal.title}</h3>
+              <button onClick={() => setShowFollowModal(null)} style={{ position: 'absolute', right: '16px', top: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+              {isFollowListLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><div className="spinner" /></div>
+              ) : followList.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No {showFollowModal.type} yet.</div>
+              ) : (
+                followList.map((item: any) => (
+                  <div key={item.id} className="follow-list-item" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', cursor: 'pointer' }}>
+                    <div 
+                      className="ig-avatar-ring" 
+                      style={{ width: '44px', height: '44px', padding: '2px' }}
+                      onClick={() => { setShowFollowModal(null); router.push(`/profile/${item.id}`); }}
+                    >
+                      <div className="ig-avatar-inner" style={{ fontSize: '18px' }}>
+                        {item.profilePicture ? <img src={item.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (item.avatar || item.name.substring(0, 1))}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1 }} onClick={() => { setShowFollowModal(null); router.push(`/profile/${item.id}`); }}>
+                      <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>@{item.username || item.name.toLowerCase().replace(' ', '')}</div>
+                    </div>
+                    {currentUserId && item.id !== currentUserId && (
+                      <button 
+                        onClick={() => handleListFollowToggle(item)}
+                        className={`ig-action-btn ${myFollowingIds.has(item.id) ? 'ig-action-btn-following' : 'ig-action-btn-follow'}`}
+                        style={{ width: 'auto', padding: '6px 16px', fontSize: '13px' }}
+                      >
+                        {myFollowingIds.has(item.id) ? 'Following' : 'Follow'}
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Unfollow Confirmation ─── */}
+      {userToUnfollow && (
+        <div className="modal-overlay" onClick={() => setUserToUnfollow(null)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <div className="ig-avatar-ring" style={{ width: '90px', height: '90px', margin: '0 auto 16px', padding: '3px' }}>
+                <div className="ig-avatar-inner" style={{ fontSize: '40px' }}>
+                  {userToUnfollow.profilePicture ? <img src={userToUnfollow.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (userToUnfollow.avatar || userToUnfollow.name.substring(0, 1))}
+                </div>
+              </div>
+              <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0 }}>Unfollow @{userToUnfollow.name.toLowerCase().replace(' ', '')}?</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={confirmUnfollow} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Unfollow</button>
+              <button onClick={() => setUserToUnfollow(null)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Block Confirmation ─── */}
+      {showBlockConfirm && (
+        <div className="modal-overlay" onClick={() => setShowBlockConfirm(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>Block {user.name}?</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>They won't be able to find your profile, posts or story on ProxyPress. They won't be notified that you blocked them.</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={handleBlockConfirm} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Block</button>
+              <button onClick={() => setShowBlockConfirm(false)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Mute Confirmation ─── */}
+      {showMuteConfirm && (
+        <div className="modal-overlay" onClick={() => setShowMuteConfirm(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>Mute {user.name}?</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>You can unmute them from their profile at any time. They won't be notified that you muted them.</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={handleMuteConfirm} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Mute</button>
+              <button onClick={() => setShowMuteConfirm(false)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Report Modal ─── */}
+      {showReportModal && (
+        <div className="modal-overlay" onClick={() => setShowReportModal(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Report</h3>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <p style={{ padding: '16px', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Why are you reporting this account?</p>
+              {REPORT_REASONS.map(reason => (
+                <button 
+                  key={reason}
+                  onClick={() => { setReportReason(reason); handleReport(); }}
+                  style={{ width: '100%', padding: '14px 16px', textAlign: 'left', background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '14px', cursor: 'pointer' }}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowReportModal(false)} style={{ padding: '16px', background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
