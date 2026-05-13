@@ -1771,8 +1771,9 @@ function MessagesContent() {
   };
 
   /* ─── CONVERSATION LIST ─── */
-  const renderConversationList = () => (
-    <div className={`msg-list-panel ${activeChat ? 'msg-list-hidden-mobile' : ''}`}>
+  const renderConversationList = () => {
+    return (
+      <div className={`msg-list-panel ${activeChat ? 'msg-list-hidden-mobile' : ''}`}>
       {/* Header */}
       <div className="msg-list-header">
         <div className="msg-list-header-top">
@@ -1979,7 +1980,8 @@ function MessagesContent() {
           </div>
       </div>
     </div>
-  );
+    );
+  };
 
   /* ─── CHAT VIEW ─── */
   const renderChatView = () => {
