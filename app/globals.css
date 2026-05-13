@@ -1214,7 +1214,13 @@ body {
 }
 
 .extra-bottom-space {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important;
+}
+
+@media (max-width: 768px) {
+  .has-mobile-header {
+    padding-top: calc(60px + env(safe-area-inset-top)) !important;
+  }
 }
 
 /* Notification Toast */

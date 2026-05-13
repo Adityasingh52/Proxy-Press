@@ -10,11 +10,16 @@ export default function MainContent({ children }: { children: React.ReactNode })
   const isSettings = pathname.startsWith('/settings');
   const isArticle = pathname.startsWith('/article');
 
+  const isNotifications = pathname === '/notifications';
+  const isMessages = pathname === '/messages';
+  const isHome = pathname === '/';
+
   const showCondensedLayout = isProfile || isCreate || isExplore || isSettings || isArticle;
+  const hasMobileHeader = isNotifications || isMessages || isHome;
 
   return (
     <main 
-      className={`main-content ${showCondensedLayout ? 'no-top-padding' : ''}`} 
+      className={`main-content ${showCondensedLayout ? 'no-top-padding' : ''} ${hasMobileHeader ? 'has-mobile-header' : ''}`} 
       id="main-content"
     >
       {children}
