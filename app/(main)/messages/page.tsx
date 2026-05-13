@@ -251,7 +251,10 @@ function MessagesContent() {
             };
           });
 
-          setConversations(mappedConvs);
+          setConversations(prev => {
+            const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
+            return [...newDrafts, ...mappedConvs];
+          });
           
           // Save to cache
           if (typeof window !== 'undefined') {
@@ -260,45 +263,6 @@ function MessagesContent() {
               timestamp: Date.now()
             }));
           }
-        }
-
-        if (targetUserId) {
-           const existing = mappedConvs.find(c => c.user.id === targetUserId);
-           if (existing) {
-             setActiveChat(existing.id);
-           } else {
-             const targetUser = await getUserProfile(targetUserId);
-             if (targetUser) {
-               const newConv: Conversation = {
-                 id: `new_${targetUserId}`,
-                 user: {
-                   id: targetUser.id,
-                   name: targetUser.name,
-                   avatar: targetUser.profilePicture || '👤',
-                   profilePicture: targetUser.profilePicture,
-                   online: true,
-                 },
-                 lastMessage: '',
-                 lastMessageTime: '',
-                 unreadCount: 0,
-                 isTyping: false,
-                 muted: false,
-                 vanishMode: false,
-                 vanishDuration: 3600,
-                 messages: [],
-               };
-               setConversations(prev => {
-                   if (prev.find(c => c.id === newConv.id)) return prev;
-                   return [newConv, ...prev];
-               });
-               setActiveChat(newConv.id);
-             }
-           }
-        } else {
-            const chatId = searchParams.get('chatId');
-            if (chatId) {
-                setActiveChat(chatId);
-            }
         }
 
         if (dbStories && dbStories.length > 0) {
@@ -432,6 +396,54 @@ function MessagesContent() {
 
     return () => clearInterval(pollInterval);
   }, [currentUserId]);
+
+  // Handle userId or chatId from URL reactively
+  useEffect(() => {
+    const targetUserId = searchParams.get('userId');
+    const targetChatId = searchParams.get('chatId');
+    
+    if (targetUserId) {
+      const existing = conversations.find(c => c.user.id === targetUserId);
+      if (existing) {
+        if (activeChat !== existing.id) setActiveChat(existing.id);
+      } else if (currentUserId && currentUserId !== 'me') {
+        // If not in conversations yet, we might need to create a temporary new chat entry
+        getUserProfile(targetUserId).then(targetUser => {
+          if (targetUser) {
+            const displayName = (targetUser.name && targetUser.name.includes('/uploads/')) 
+              ? (targetUser.username || 'User') 
+              : (targetUser.name || 'Unknown User');
+              
+            const newConv: Conversation = {
+              id: `new_${targetUser.id}`,
+              user: {
+                id: targetUser.id,
+                name: displayName,
+                avatar: targetUser.profilePicture || (displayName ? displayName.substring(0, 1) : '👤'),
+                profilePicture: targetUser.profilePicture,
+                online: true,
+              },
+              lastMessage: '',
+              lastMessageTime: '',
+              unreadCount: 0,
+              isTyping: false,
+              muted: false,
+              vanishMode: false,
+              vanishDuration: 3600,
+              messages: [],
+            };
+            setConversations(prev => {
+              if (prev.find(c => c.id === newConv.id || c.user.id === targetUser.id)) return prev;
+              return [newConv, ...prev];
+            });
+            setActiveChat(newConv.id);
+          }
+        }).catch(err => console.error("Failed to fetch target user for messaging:", err));
+      }
+    } else if (targetChatId) {
+      if (activeChat !== targetChatId) setActiveChat(targetChatId);
+    }
+  }, [searchParams, currentUserId, conversations.length, activeChat]);
 
   // Load messages when active chat changes
   useEffect(() => {
@@ -873,7 +885,12 @@ function MessagesContent() {
       ));
     }
     setActiveChat(null);
-  }, [activeChat, activeConversation?.vanishMode]);
+    // Clear URL parameters so we don't immediately re-open the chat via effect
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.delete('userId');
+    newParams.delete('chatId');
+    router.replace(`/messages${newParams.toString() ? `?${newParams.toString()}` : ''}`, { scroll: false });
+  }, [activeChat, activeConversation?.vanishMode, searchParams, router]);
 
   const toggleVanishMode = async () => {
     if (!activeChat || activeChat.startsWith('new_')) return;
