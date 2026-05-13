@@ -10,23 +10,47 @@ export default function PrivacySettingsPage() {
   const [showConfirmActivity, setShowConfirmActivity] = useState(false);
   const [showFutureModal, setShowFutureModal] = useState(false);
   const [futureModalType, setFutureModalType] = useState<'data' | 'ads'>('data');
-  const [blockedCount, setBlockedCount] = useState(0);
-  const [followRequests, setFollowRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [privacy, setPrivacy] = useState({
-    account: {
-      privateAccount: false,
-      activityStatus: true,
-    },
-    interactions: {
-      mentions: 'Everyone',
-      comments: 'Everyone',
-      tags: 'Everyone',
-    },
-    data: {
-      personalizedAds: true,
-      downloadData: false,
+  const [blockedCount, setBlockedCount] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return Number(localStorage.getItem('proxypress_privacy_blocked_count') || 0);
     }
+    return 0;
+  });
+  const [followRequests, setFollowRequests] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_privacy_requests');
+      try { return cached ? JSON.parse(cached) : []; } catch (e) { return []; }
+    }
+    return [];
+  });
+  const [loading, setLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('proxypress_privacy_data');
+    }
+    return true;
+  });
+  const [privacy, setPrivacy] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_privacy_data');
+      if (cached) {
+        try { return JSON.parse(cached); } catch (e) {}
+      }
+    }
+    return {
+      account: {
+        privateAccount: false,
+        activityStatus: true,
+      },
+      interactions: {
+        mentions: 'Everyone',
+        comments: 'Everyone',
+        tags: 'Everyone',
+      },
+      data: {
+        personalizedAds: true,
+        downloadData: false,
+      }
+    };
   });
 
   useEffect(() => {
@@ -44,7 +68,7 @@ export default function PrivacySettingsPage() {
         ]);
         
         if (user) {
-          setPrivacy({
+          const newPrivacy = {
             account: {
               privateAccount: !!user.isPrivate,
               activityStatus: !!user.showActivityStatus,
@@ -58,10 +82,18 @@ export default function PrivacySettingsPage() {
               personalizedAds: true,
               downloadData: false,
             }
-          });
+          };
+          setPrivacy(newPrivacy);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('proxypress_privacy_data', JSON.stringify(newPrivacy));
+          }
         }
         setBlockedCount(users.length);
         setFollowRequests(requests);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('proxypress_privacy_blocked_count', users.length.toString());
+          localStorage.setItem('proxypress_privacy_requests', JSON.stringify(requests));
+        }
       } catch (e) {
         console.error('Failed to load privacy data:', e);
       } finally {

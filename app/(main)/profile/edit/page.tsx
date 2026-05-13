@@ -9,23 +9,57 @@ import './edit-profile.css';
 
 export default function EditProfilePage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('proxypress_user_data');
+    }
+    return true;
+  });
   const [activeTab, setActiveTab] = useState<'profile' | 'personal'>('profile');
   
   // Form State
-  const [formData, setFormData] = useState({
-    name: '',
-    username: '',
-    email: '',
-    bio: '',
-    college: '',
-    branch: '',
-    department: '',
-    contactInfo: '',
-    phone: '',
-    dateOfBirth: '',
-    gender: '',
-    links: [''],
+  const [formData, setFormData] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_user_data');
+      if (cached) {
+        try {
+          const user = JSON.parse(cached);
+          let parsedLinks: string[] = [''];
+          if (user.links) {
+            parsedLinks = JSON.parse(user.links);
+            if (parsedLinks.length === 0) parsedLinks = [''];
+          }
+          return {
+            name: user.name || '',
+            username: user.username || '',
+            email: user.email || '',
+            bio: user.bio || '',
+            college: user.college || '',
+            branch: user.branch || '',
+            department: user.department || '',
+            contactInfo: user.contactInfo || '',
+            phone: user.phone || '',
+            dateOfBirth: user.dateOfBirth || '',
+            gender: user.gender || '',
+            links: parsedLinks,
+          };
+        } catch (e) {}
+      }
+    }
+    return {
+      name: '',
+      username: '',
+      email: '',
+      bio: '',
+      college: '',
+      branch: '',
+      department: '',
+      contactInfo: '',
+      phone: '',
+      dateOfBirth: '',
+      gender: '',
+      links: [''],
+    };
   });
 
   // Handle top spacing
@@ -42,6 +76,9 @@ export default function EditProfilePage() {
     async function loadUser() {
       const user = await getCurrentUser();
       if (user) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('proxypress_user_data', JSON.stringify(user));
+        }
         let parsedLinks: string[] = [''];
         try {
           if (user.links) {
@@ -81,7 +118,15 @@ export default function EditProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
 
   // Avatar State
-  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(null);
+  const [selectedAvatar, setSelectedAvatar] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const cached = localStorage.getItem('proxypress_user_data');
+      if (cached) {
+        try { return JSON.parse(cached).profilePicture || null; } catch (e) {}
+      }
+    }
+    return null;
+  });
   const [pendingAvatar, setPendingAvatar] = useState<string | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -187,29 +232,18 @@ export default function EditProfilePage() {
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="edit-profile-container design-ref">
-        <div className="ref-header">
-          <button onClick={() => router.push('/profile')} className="ref-back-btn">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
-          <h1 className="ref-title">Edit Profile</h1>
-          <div style={{ width: 40 }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>
-          Loading...
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="edit-profile-container design-ref">
       <div className="ref-header">
-        <button onClick={() => router.push('/profile')} className="ref-back-btn">
+        <button 
+          onClick={() => {
+            const userId = typeof window !== 'undefined' ? localStorage.getItem('proxypress_user_id') : null;
+            router.push(userId ? `/profile/${userId}` : '/profile');
+          }} 
+          className="ref-back-btn"
+        >
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
