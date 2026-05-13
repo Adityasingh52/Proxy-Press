@@ -46,7 +46,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     return null;
   });
 
-  const [isMe, setIsMe] = useState(initialData?.currentUserId === initialData?.user?.id);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
+  const isMe = currentUserId && user ? currentUserId === user.id : false;
   
   const [userPosts, setUserPosts] = useState<any[]>(() => {
     if (initialData?.posts) return initialData.posts;
@@ -101,7 +102,6 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     }
     return true;
   });
-  const [currentUserId, setCurrentUserId] = useState<string | null>(initialData?.currentUserId || null);
   const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
   const [isMuted, setIsMuted] = useState(initialData?.isMuted || false);
 
@@ -150,6 +150,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           setFollowersCount(freshData.followCounts?.followers || 0);
           setFollowingCount(freshData.followCounts?.following || 0);
           setIsLoading(false);
+          if (freshData.currentUserId) setCurrentUserId(freshData.currentUserId);
         }
       } catch (err) {
         console.error("Background refresh failed", err);

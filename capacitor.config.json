@@ -7,9 +7,7 @@
     "cleartext": true
   },
   "android": {
-    "backgroundColor": "#ffffff",
-    "allowMixedContent": true,
-    "captureInput": true
+    "backgroundColor": "#ffffff"
   },
   "ios": {
     "contentInset": "always"

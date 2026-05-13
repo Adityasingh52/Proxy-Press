@@ -37,7 +37,6 @@ export const metadata: Metadata = {
 
 import { NotificationsProvider } from "@/lib/NotificationsContext";
 import PWAProvider from "@/lib/PWAProvider";
-import SplashScreen from "@/app/components/Loading/SplashScreen";
 
 export default function RootLayout({
   children,
@@ -78,34 +77,13 @@ export default function RootLayout({
             } catch (e) {}
           })();
         `}} />
-        <style dangerouslySetInnerHTML={{ __html: `
-          #initial-loader {
-            position: fixed;
-            inset: 0;
-            background: #F8FAFC;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-          }
-          .dark #initial-loader {
-            background: #0F172A;
-          }
-        `}} />
       </head>
       <body suppressHydrationWarning>
         <PWAProvider>
-          <SplashScreen />
           <NotificationsProvider>
             {children}
           </NotificationsProvider>
         </PWAProvider>
-        <script dangerouslySetInnerHTML={{ __html: `
-          window.addEventListener('load', function() {
-            var loader = document.getElementById('initial-loader');
-            if (loader) loader.style.display = 'none';
-          });
-        `}} />
       </body>
     </html>
   );
