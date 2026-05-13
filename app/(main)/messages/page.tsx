@@ -1079,7 +1079,11 @@ function MessagesContent() {
     setStoryPaused(false);
     setStoryReply('');
     setStoryReaction(null);
-  }, []);
+    // Clear story param
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.delete('story');
+    router.replace(`/messages${newParams.toString() ? `?${newParams.toString()}` : ''}`, { scroll: false });
+  }, [searchParams, router]);
 
   const goToNextSlide = useCallback(() => {
     const viewable = allViewableStories();
@@ -1154,6 +1158,11 @@ function MessagesContent() {
     setActiveSlideIdx(0);
     setStoryProgress(0);
     setStoryPaused(false);
+
+    // Set story param
+    const newParams = new URLSearchParams(searchParams.toString());
+    newParams.set('story', 'true');
+    router.replace(`/messages?${newParams.toString()}`, { scroll: false });
 
     const viewable = allViewableStories();
     const currentUser = viewable[userIdx];
@@ -2051,7 +2060,7 @@ function MessagesContent() {
                 <button
                   key={c.id}
                   className="msg-online-avatar-btn"
-                  onClick={() => setActiveChat(c.id)}
+                  onClick={() => router.replace(`/messages?chatId=${c.id}`, { scroll: false })}
                 >
                   <div className="msg-online-avatar-ring">
                     <div className="msg-online-avatar">
@@ -2079,7 +2088,7 @@ function MessagesContent() {
           <button
             key={conv.id}
             className={`msg-conversation-item ${activeChat === conv.id ? 'active' : ''} ${conv.unreadCount > 0 ? 'unread' : ''}`}
-            onClick={() => setActiveChat(conv.id)}
+            onClick={() => router.replace(`/messages?chatId=${conv.id}`, { scroll: false })}
           >
             <div className="msg-conv-avatar-wrapper">
               <div className={`msg-conv-avatar ${conv.user.online ? 'online' : ''}`}>
@@ -2154,7 +2163,7 @@ function MessagesContent() {
                         if (prev.find(c => c.id === newConv.id)) return prev;
                         return [newConv, ...prev];
                     });
-                    setActiveChat(newConv.id);
+                    router.replace(`/messages?userId=${user.id}`, { scroll: false });
                     setSearchQuery('');
                     setSearchResults([]);
                   }}
