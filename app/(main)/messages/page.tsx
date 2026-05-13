@@ -237,7 +237,16 @@ function MessagesContent() {
         setCurrentUserId(myId);
         setCurrentUserProfilePic(currentUser?.profilePicture);
 
+        // 1. Load from Cache IMMEDIATELY (Instant UI)
+        const cachedConvs = await OfflineManager.loadData<Conversation[]>(`convs_${myId}`);
+        if (cachedConvs) {
+          console.log('[Offline] Loading conversations from local cache');
+          setConversations(cachedConvs);
+        }
+
         const targetUserId = searchParams.get('userId');
+        
+        // 2. Fetch fresh data from Network in background
         const [convs, dbStories] = await Promise.all([
           getConversations(myId),
           getStories(myId)
@@ -305,6 +314,9 @@ function MessagesContent() {
 
             return [...newDrafts, ...merged];
           });
+
+          // 3. Update Cache with fresh data
+          OfflineManager.saveData(`convs_${myId}`, mappedConvs);
         }
 
         if (dbStories && dbStories.length > 0) {
@@ -429,6 +441,9 @@ function MessagesContent() {
               };
             });
 
+            // Update cache during polling too
+            OfflineManager.saveData(`convs_${currentUserId}`, merged);
+
             return merged;
           });
         }
@@ -503,7 +518,19 @@ function MessagesContent() {
       if (!activeChat) return;
       const chatId = activeChat;
       const existing = conversations.find(c => c.id === chatId);
-      // Only fetch if we don't have messages yet
+
+      // 1. Load messages from Cache FIRST
+      if (existing && !existing.historyLoaded) {
+        const cachedMsgs = await OfflineManager.loadData<any[]>(`msgs_${chatId}`);
+        if (cachedMsgs) {
+           console.log(`[Offline] Loading messages from cache for ${chatId}`);
+           setConversations(prev => prev.map(c => 
+             c.id === chatId ? { ...c, messages: cachedMsgs } : c
+           ));
+        }
+      }
+
+      // 2. Fetch from Network if not loaded yet
       if (existing && !existing.historyLoaded) {
         try {
           const dbMsgs = await getMessages(chatId);
@@ -524,6 +551,9 @@ function MessagesContent() {
           setConversations(prev => prev.map(c => 
             c.id === chatId ? { ...c, messages: mappedMsgs, historyLoaded: true } : c
           ));
+
+          // 3. Save to Cache
+          OfflineManager.saveData(`msgs_${chatId}`, mappedMsgs);
         } catch (err) {
           console.error('Failed to load messages:', err);
         }
@@ -1592,7 +1622,9 @@ function MessagesContent() {
       };
 
       const filtered = prev.filter(c => c.id !== activeChat);
-      return [updatedConv, ...filtered];
+      const result = [updatedConv, ...filtered];
+      OfflineManager.saveData(`convs_${currentUserId}`, result);
+      return result;
     });
     setMessageInput('');
     setReplyingTo(null);
@@ -1679,7 +1711,9 @@ function MessagesContent() {
       };
 
       const filtered = prev.filter(c => c.id !== activeChat);
-      return [updatedConv, ...filtered];
+      const result = [updatedConv, ...filtered];
+      OfflineManager.saveData(`convs_${currentUserId}`, result);
+      return result;
     });
 
     const heartPayload = {

@@ -207,4 +207,28 @@ export const OfflineManager = {
   async _saveQueue(queue: PendingMessage[]) {
     await Preferences.set({ key: QUEUE_KEY, value: JSON.stringify(queue) });
   },
+
+  /**
+   * Generic data caching for fast startup (WhatsApp-style)
+   */
+  async saveData(key: string, data: any) {
+    try {
+      await Preferences.set({
+        key: `pp_cache_${key}`,
+        value: JSON.stringify(data)
+      });
+    } catch (err) {
+      console.error(`[OfflineManager] Cache Save Error [${key}]:`, err);
+    }
+  },
+
+  async loadData<T>(key: string): Promise<T | null> {
+    try {
+      const { value } = await Preferences.get({ key: `pp_cache_${key}` });
+      return value ? JSON.parse(value) : null;
+    } catch (err) {
+      console.error(`[OfflineManager] Cache Load Error [${key}]:`, err);
+      return null;
+    }
+  }
 };
