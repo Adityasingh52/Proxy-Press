@@ -1977,10 +1977,6 @@ function MessagesContent() {
             })}
 
           </div>
-        )}
-      </div>
-      <div className="msg-list-footer">
-        <MobileBottomNav />
       </div>
     </div>
   );

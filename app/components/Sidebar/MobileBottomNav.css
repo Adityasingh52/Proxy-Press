@@ -6,7 +6,7 @@
   right: 0;
   background-color: var(--surface);
   border-top: 1px solid var(--border);
-  z-index: 50;
+  z-index: 1000001;
   padding-bottom: env(safe-area-inset-bottom); /* For iOS safe area */
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.05);
 }
