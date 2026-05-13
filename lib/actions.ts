@@ -898,9 +898,20 @@ export async function logout() {
   return { success: true };
 }
 
+import { getServerSession } from "next-auth";
+import { authOptions } from "./auth";
+
 export async function getCurrentUser() {
   const cookieStore = await cookies();
-  const userId = cookieStore.get('proxypress_session')?.value;
+  let userId = cookieStore.get('proxypress_session')?.value;
+
+  if (!userId) {
+    const session = await getServerSession(authOptions);
+    if (session?.user && (session.user as any).id) {
+      userId = (session.user as any).id;
+    }
+  }
+
   if (!userId) return null;
 
   const user = await db.query.users.findFirst({
@@ -911,8 +922,8 @@ export async function getCurrentUser() {
 }
 
 export async function getUserProfile(idOrHandle: string) {
-  const cookieStore = await cookies();
-  const currentUserId = cookieStore.get('proxypress_session')?.value;
+  const currentUser = await getCurrentUser();
+  const currentUserId = currentUser?.id;
 
   // 1. Try fetching by exact ID
   let user = await db.query.users.findFirst({
@@ -943,8 +954,8 @@ export async function getUserProfile(idOrHandle: string) {
 }
 
 export async function getProfileData(idOrHandle: string) {
-  const cookieStore = await cookies();
-  const currentUserId = cookieStore.get('proxypress_session')?.value;
+  const currentUser = await getCurrentUser();
+  const currentUserId = currentUser?.id;
 
   // Optimization: Use Redis for the user's own profile (sub-millisecond speed)
   const isSelf = currentUserId && (idOrHandle === currentUserId || idOrHandle === `@${currentUserId}`);
