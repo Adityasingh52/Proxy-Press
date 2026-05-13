@@ -353,8 +353,6 @@ function MessagesContent() {
               };
             });
 
-            }
-
             return merged;
           });
         }
