@@ -2284,7 +2284,7 @@ function MessagesContent() {
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
               </button>
-              <Link href={user.id === 'me' ? '/profile' : `/profile/${user.id}`} className="msg-chat-header-user" style={{ textDecoration: 'none', color: 'inherit' }}>
+              <div className="msg-chat-header-user">
                 <div className={`msg-chat-header-avatar ${user.online ? 'online' : ''}`}>
                   {user.profilePicture ? (
                     <img src={user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
@@ -2298,7 +2298,7 @@ function MessagesContent() {
                     ) : user.online ? 'Active now' : `${user.lastSeen || 'Offline'}`}
                   </span>
                 </div>
-              </Link>
+              </div>
               <div className="msg-chat-header-actions">
                 <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => setShowFutureModal(true)}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">

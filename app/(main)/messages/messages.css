@@ -588,9 +588,9 @@
   align-items: center;
   gap: 12px;
   flex: 1;
-  cursor: pointer;
   min-width: 0;
 }
+
 
 .msg-chat-header-avatar {
   width: 40px;

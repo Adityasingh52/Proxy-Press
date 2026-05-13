@@ -295,20 +295,34 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   };
 
   const handleShareProfile = async () => {
+    const shareUrl = `${window.location.origin}/profile/${user?.id || id}`;
+    const shareData = {
+      title: `${user?.name || 'User'} on ProxyPress`,
+      text: `Check out ${user?.name || 'this profile'} on ProxyPress`,
+      url: shareUrl,
+    };
+
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: `${user?.name}'s Profile`,
-          text: `Check out ${user?.name}'s profile on ProxyPress`,
-          url: window.location.href,
-        });
-      } catch { }
+        await navigator.share(shareData);
+      } catch (err) {
+        // Only log if it's not a user cancellation
+        if ((err as any).name !== 'AbortError') {
+          console.error('Error sharing:', err);
+        }
+      }
     } else {
-      handleCopyLink();
-      return;
+      // Fallback for browsers without Web Share API
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setToast({ message: 'Profile link copied!', type: 'info' });
+      } catch {
+        setToast({ message: 'Failed to share profile', type: 'danger' });
+      }
     }
     setShowOptionsMenu(false);
   };
+
 
   const handleMuteToggle = () => {
     setShowMuteConfirm(true);
@@ -510,11 +524,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
       {/* Profile Header UI (Omitted for brevity, but same as original) */}
       <div className="ig-header-main">
         <div className="ig-avatar-outer">
-          <Link href="/" className="ig-header-back-btn" aria-label="Go back">
+          <button onClick={() => router.back()} className="ig-header-back-btn" aria-label="Go back">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
-          </Link>
+          </button>
 
           <div className="ig-avatar-ring jumbo" onClick={() => setShowFullImage(true)} style={{ cursor: 'pointer' }}>
             <div className="ig-avatar-inner jumbo" style={{ overflow: 'hidden' }}>
