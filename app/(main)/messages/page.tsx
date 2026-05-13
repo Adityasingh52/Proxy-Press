@@ -85,6 +85,7 @@ interface Conversation {
   muted: boolean;
   vanishMode: boolean;
   vanishDuration: number;
+  historyLoaded?: boolean;
 }
 
 /* ─────────── MOCK DATA ─────────── */
@@ -242,7 +243,8 @@ function MessagesContent() {
               const existing = prev.find(p => p.id === newC.id);
               return {
                 ...newC,
-                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages
+                messages: (newC.messages.length === 0 && existing) ? existing.messages : newC.messages,
+                historyLoaded: existing?.historyLoaded || false
               };
             });
 
@@ -365,7 +367,8 @@ function MessagesContent() {
 
               return {
                 ...newC,
-                messages: shouldRefreshMessages ? [] : (existing?.messages || [])
+                messages: shouldRefreshMessages ? [] : (existing?.messages || []),
+                historyLoaded: shouldRefreshMessages ? false : (existing?.historyLoaded || false)
               };
             });
 
@@ -437,7 +440,7 @@ function MessagesContent() {
       const chatId = activeChat;
       const existing = conversations.find(c => c.id === chatId);
       // Only fetch if we don't have messages yet
-      if (existing && existing.messages.length === 0) {
+      if (existing && !existing.historyLoaded) {
         try {
           const dbMsgs = await getMessages(chatId);
           const mappedMsgs = dbMsgs.map((m: any) => ({
@@ -455,7 +458,7 @@ function MessagesContent() {
           })).reverse();
 
           setConversations(prev => prev.map(c => 
-            c.id === chatId ? { ...c, messages: mappedMsgs } : c
+            c.id === chatId ? { ...c, messages: mappedMsgs, historyLoaded: true } : c
           ));
         } catch (err) {
           console.error('Failed to load messages:', err);
