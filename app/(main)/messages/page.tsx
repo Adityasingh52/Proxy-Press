@@ -1568,7 +1568,13 @@ function MessagesContent() {
       };
       
       const filtered = prev.filter(c => c.id !== activeChat);
-      return [updatedConv, ...filtered];
+      const result = [updatedConv, ...filtered];
+      
+      // Update both caches instantly
+      OfflineManager.saveData(`convs_${currentUserId}`, result);
+      OfflineManager.saveData(`msgs_${activeChat}`, updatedConv.messages);
+      
+      return result;
     });
 
     setShowShareMenu(false);
@@ -1662,7 +1668,11 @@ function MessagesContent() {
 
       const filtered = prev.filter(c => c.id !== activeChat);
       const result = [updatedConv, ...filtered];
+      
+      // Update both caches instantly to prevent disappearing on next poll
       OfflineManager.saveData(`convs_${currentUserId}`, result);
+      OfflineManager.saveData(`msgs_${activeChat}`, updatedConv.messages);
+      
       return result;
     });
     setMessageInput('');
@@ -1751,7 +1761,11 @@ function MessagesContent() {
 
       const filtered = prev.filter(c => c.id !== activeChat);
       const result = [updatedConv, ...filtered];
+      
+      // Update both caches instantly
       OfflineManager.saveData(`convs_${currentUserId}`, result);
+      OfflineManager.saveData(`msgs_${activeChat}`, updatedConv.messages);
+      
       return result;
     });
 
