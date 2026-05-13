@@ -227,35 +227,50 @@ function MessagesContent() {
     };
   }, []);
 
-
+  /* ─── Instant Cache Load ─── */
+  useEffect(() => {
+    async function loadCacheOnMount() {
+      // 1. Get last user ID instantly from local storage
+      const lastId = await OfflineManager.loadData<string>('last_user_id');
+      if (lastId) {
+        setCurrentUserId(lastId);
+        // 2. Load their conversations instantly
+        const cached = await OfflineManager.loadData<Conversation[]>(`convs_${lastId}`);
+        if (cached && cached.length > 0) {
+          console.log('[Offline] Instant startup for:', lastId);
+          setConversations(cached);
+        }
+      }
+    }
+    loadCacheOnMount();
+  }, []);
 
   useEffect(() => {
     async function loadInitialData() {
       try {
-        const currentUser = await getCurrentUser();
-        const myId = currentUser?.id || 'me';
-        setCurrentUserId(myId);
-        setCurrentUserProfilePic(currentUser?.profilePicture);
-
-        // 1. Load from Cache IMMEDIATELY (Instant UI)
-        const cachedConvs = await OfflineManager.loadData<Conversation[]>(`convs_${myId}`);
-        if (cachedConvs) {
-          console.log('[Offline] Loading conversations from local cache');
-          setConversations(cachedConvs);
+        // Fetch current user in background
+        const currentUserPromise = getCurrentUser();
+        
+        // Use cached ID or wait for fresh one
+        const currentUser = await currentUserPromise;
+        const myId = currentUser?.id || currentUserId || 'me';
+        
+        if (currentUser) {
+          setCurrentUserId(myId);
+          setCurrentUserProfilePic(currentUser?.profilePicture);
+          OfflineManager.saveData('last_user_id', myId);
         }
 
         const targetUserId = searchParams.get('userId');
         
-        // 2. Fetch fresh data from Network in background
+        // Fetch fresh data from Network
         const [convs, dbStories] = await Promise.all([
           getConversations(myId),
           getStories(myId)
         ]);
         
         let mappedConvs: Conversation[] = [];
-        if (convs && convs.length > 0) {
-          console.log('Loaded conversations from DB:', convs);
-          
+        if (convs) {
           mappedConvs = convs.map((dbConv: any) => {
             const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== myId);
             const otherUser = otherParticipant?.user;
@@ -3579,7 +3594,7 @@ function MessagesContent() {
 
 export default function MessagesPage() {
   return (
-    <Suspense fallback={<div className="msg-loading">Loading messages...</div>}>
+    <Suspense fallback={<div className="msg-page-skeleton" />}>
       <MessagesContent />
     </Suspense>
   );
