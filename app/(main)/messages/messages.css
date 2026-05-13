@@ -777,6 +777,21 @@
   flex-shrink: 0;
 }
 
+.msg-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.msg-bubble-avatar-placeholder {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  text-transform: uppercase;
+}
+
 .msg-bubble-content-wrapper {
   display: flex;
   flex-direction: column;

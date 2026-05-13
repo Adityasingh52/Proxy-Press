@@ -2154,6 +2154,19 @@ function MessagesContent() {
                 onTouchStart={() => handleMsgTouchStart(msg)}
                 onTouchEnd={handleMsgTouchEnd}
               >
+                {!isMine && (
+                  <div className="msg-bubble-avatar-wrapper">
+                    {isLastInGroup ? (
+                      <div className="msg-bubble-avatar">
+                        {user.profilePicture ? (
+                          <img src={user.profilePicture} alt="" className="msg-avatar-img" />
+                        ) : user.avatar}
+                      </div>
+                    ) : (
+                      <div className="msg-bubble-avatar-spacer" />
+                    )}
+                  </div>
+                )}
 
                 <div className="msg-bubble-content-wrapper">
                   <div className={`msg-bubble ${isMine ? 'mine' : 'theirs'} ${msg.type === 'heart' ? 'heart-msg' : ''} ${msg.attachment ? 'has-attachment' : ''} ${msg.isDeleted ? 'deleted' : ''}`}>
@@ -2333,6 +2346,22 @@ function MessagesContent() {
                     </div>
                   )}
                 </div>
+
+                {isMine && (
+                  <div className="msg-bubble-avatar-wrapper">
+                    {isLastInGroup ? (
+                      <div className="msg-bubble-avatar">
+                        {currentUserProfilePic ? (
+                          <img src={currentUserProfilePic} alt="" className="msg-avatar-img" />
+                        ) : (
+                          <div className="msg-bubble-avatar-placeholder">Me</div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="msg-bubble-avatar-spacer" />
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
