@@ -73,19 +73,22 @@ export default function MobileBottomNav() {
     return null;
   });
 
+  // 1. Initial Data Load & Periodic Refresh (Mount Only)
   useEffect(() => {
-    async function loadData() {
+    async function initLoad() {
       try {
-        const [count, user] = await Promise.all([
-          getUnreadMessageCountAction(),
-          import('@/lib/actions').then(m => m.getCurrentUser())
-        ]);
-        setUnreadCount(count);
+        const actions = await import('@/lib/actions');
+        const user = await actions.getCurrentUser();
+        
         if (user) {
           setCurrentUserId(user.id);
           localStorage.setItem('proxypress_user_id', user.id);
-          // GLOBAL CACHE WARMING: Keep self-profile and messages hot
-          const actions = await import('@/lib/actions');
+          
+          // Refresh count immediately
+          const count = await actions.getUnreadMessageCountAction();
+          setUnreadCount(count);
+
+          // Background warming - do not block UI
           const [profileData, convs, stories] = await Promise.all([
             actions.getProfileData(user.id),
             actions.getConversations(user.id),
@@ -97,7 +100,6 @@ export default function MobileBottomNav() {
           }
 
           if (convs) {
-            // Map conversations to UI format before caching
             const mappedConvs = convs.map((dbConv: any) => {
               const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== user.id);
               const otherUser = otherParticipant?.user;
@@ -138,12 +140,18 @@ export default function MobileBottomNav() {
           }
         }
       } catch (e) {
-        console.error('Failed to load nav data', e);
+        console.error('Initial load failed', e);
       }
     }
-    loadData();
-    const interval = setInterval(loadData, 15000); // Poll every 15s
+
+    initLoad();
+    const interval = setInterval(initLoad, 20000); // 20s interval is enough
     return () => clearInterval(interval);
+  }, []);
+
+  // 2. Lightweight Pathname Refresh (Only for notifications/badge)
+  useEffect(() => {
+    getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
   }, [pathname]);
 
   return (
