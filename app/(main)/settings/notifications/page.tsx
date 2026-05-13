@@ -5,8 +5,15 @@ import { useEffect, useState } from 'react';
 import '../settings.css';
 import { getCurrentUser, updateUserNotificationSettings } from '@/lib/actions';
 
+interface NotificationSettings {
+  notifyLikes: boolean;
+  notifyComments: boolean;
+  notifyMentions: boolean;
+  notifyNewPosts: boolean;
+}
+
 export default function NotificationSettingsPage() {
-  const [settings, setSettings] = useState(() => {
+  const [settings, setSettings] = useState<NotificationSettings>(() => {
     if (typeof window !== 'undefined') {
       const cached = localStorage.getItem('proxypress_notification_settings');
       if (cached) {
@@ -18,7 +25,7 @@ export default function NotificationSettingsPage() {
       notifyComments: true,
       notifyMentions: true,
       notifyNewPosts: false,
-    };
+    } as NotificationSettings;
   });
 
   const [loading, setLoading] = useState(() => {
@@ -29,7 +36,7 @@ export default function NotificationSettingsPage() {
   });
   const [confirmModal, setConfirmModal] = useState<{
     show: boolean;
-    key: keyof typeof settings | null;
+    key: keyof NotificationSettings | null;
     label: string;
     currentValue: boolean;
   }>({
@@ -65,7 +72,7 @@ export default function NotificationSettingsPage() {
     }
   }, []);
 
-  const handleToggleRequest = (key: keyof typeof settings, label: string) => {
+  const handleToggleRequest = (key: keyof NotificationSettings, label: string) => {
     setConfirmModal({
       show: true,
       key,
