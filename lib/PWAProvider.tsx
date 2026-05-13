@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { PushNotificationManager } from './push-notifications';
 
 export default function PWAProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -16,6 +17,9 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
           });
       });
     }
+
+    // Register for native push notifications
+    PushNotificationManager.register();
   }, []);
 
   return <>{children}</>;

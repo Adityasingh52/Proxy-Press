@@ -107,6 +107,21 @@ export async function getPostDetail(slug: string) {
   return JSON.parse(JSON.stringify({ post, related, canComment }));
 }
 
+export async function updateFcmToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false };
+
+  try {
+    await db.update(schema.users)
+      .set({ fcmToken: token })
+      .where(eq(schema.users.id, user.id));
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to update FCM token:', err);
+    return { success: false };
+  }
+}
+
 import { unstable_noStore as noStore } from 'next/cache';
 
 export async function getConversations(userId: string) {

@@ -37,6 +37,7 @@ export const users = pgTable('users', {
   mentionPrivacy: text('mention_privacy').default('Everyone'), // 'Everyone', 'People You Follow', 'No One'
   showActivityStatus: boolean('show_activity_status').default(true),
   lastSeen: text('last_seen'), // ISO date string
+  fcmToken: text('fcm_token'), // For native push notifications
 });
 
 export const userRelations = relations(users, ({ many }) => ({
