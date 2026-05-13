@@ -22,7 +22,7 @@ export default function MainContent({ children }: { children: React.ReactNode })
       className={`main-content ${showCondensedLayout ? 'no-top-padding' : ''} ${hasMobileHeader ? 'has-mobile-header' : ''}`} 
       id="main-content"
     >
-      <div className="animate-page-enter" key={pathname}>
+      <div className="animate-page-enter page-wrapper" key={pathname}>
         {children}
       </div>
     </main>
