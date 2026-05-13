@@ -11,7 +11,10 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="app-shell">
       <UserActivityRecorder />
-      <MobileHeader />
+      <Suspense fallback={null}>
+        <MobileHeader />
+      </Suspense>
+
       <LeftSidebar />
       <MainContent>
         {children}
