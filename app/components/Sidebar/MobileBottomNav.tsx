@@ -66,7 +66,12 @@ const navItems = [
 export default function MobileBottomNav() {
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('proxypress_user_id');
+    }
+    return null;
+  });
 
   useEffect(() => {
     async function loadData() {
@@ -78,6 +83,7 @@ export default function MobileBottomNav() {
         setUnreadCount(count);
         if (user) {
           setCurrentUserId(user.id);
+          localStorage.setItem('proxypress_user_id', user.id);
           // GLOBAL CACHE WARMING: Keep the self-profile hot no matter which page we are on
           const profileData = await import('@/lib/actions').then(m => m.getProfileData(user.id));
           if (profileData) {
