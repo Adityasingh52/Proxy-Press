@@ -4,7 +4,10 @@
   "webDir": "out",
   "server": {
     "url": "https://proxy-press-omega.vercel.app",
-    "cleartext": true
+    "cleartext": true,
+    "allowNavigation": [
+      "proxy-press-omega.vercel.app"
+    ]
   },
   "android": {
     "backgroundColor": "#ffffff"

@@ -26,6 +26,7 @@ import {
   editMessage,
   deleteMessage as dbDeleteMessage
 } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
 
 /* ─────────── TYPES ─────────── */
 interface User {
@@ -171,6 +172,60 @@ function MessagesContent() {
   const [activeChat, setActiveChat] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string>('me');
   const [currentUserProfilePic, setCurrentUserProfilePic] = useState<string | undefined>();
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  /* ─── Offline Manager Init ─── */
+  useEffect(() => {
+    OfflineManager.init();
+
+    // Check initial online status
+    OfflineManager.isOnline().then(setIsOnline);
+    OfflineManager.getPendingCount().then(setPendingCount);
+
+    // Listen for network changes
+    const unsubStatus = OfflineManager.onStatusChange((online) => {
+      setIsOnline(online);
+      if (online) {
+        OfflineManager.getPendingCount().then(setPendingCount);
+      }
+    });
+
+    // Listen for queued messages being successfully sent
+    const unsubFlush = OfflineManager.onFlush((msg, result) => {
+      if (result.success) {
+        // Update the local message from 'sending' to 'sent' and swap temp ID
+        setConversations(prev => prev.map(c => {
+          if (c.id === msg.conversationId || (result.conversationId && c.id === msg.conversationId)) {
+            return {
+              ...c,
+              id: result.conversationId || c.id,
+              messages: c.messages.map(m =>
+                m.id === msg.tempId
+                  ? { ...m, id: result.id || m.id, status: 'sent' as const }
+                  : m
+              ),
+            };
+          }
+          return c;
+        }));
+      } else {
+        // Mark message as error after all retries failed
+        setConversations(prev => prev.map(c => ({
+          ...c,
+          messages: c.messages.map(m =>
+            m.id === msg.tempId ? { ...m, status: 'error' as const } : m
+          ),
+        })));
+      }
+      OfflineManager.getPendingCount().then(setPendingCount);
+    });
+
+    return () => {
+      unsubStatus();
+      unsubFlush();
+    };
+  }, []);
 
 
 
@@ -690,22 +745,44 @@ function MessagesContent() {
         } : c
       ));
 
-      // 4. Send message reference to DB
-      const res = await dbSendMessage({
+      // 4. Send message reference to DB (with offline fallback)
+      const voicePayload = {
         conversationId: activeChat,
         senderId: currentUserId,
         text: 'Voice message',
         type: 'voice',
         attachment: fileUrl
-      });
+      };
 
-      if (res.success) {
-        setConversations(prev => prev.map(c => 
-          c.id === activeChat ? { 
-            ...c, 
-            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.id as string, status: 'sent' } : m)
-          } : c
-        ));
+      const online = await OfflineManager.isOnline();
+
+      if (online) {
+        try {
+          const res = await dbSendMessage(voicePayload);
+          if (res.success) {
+            setConversations(prev => prev.map(c => 
+              c.id === activeChat ? { 
+                ...c, 
+                messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: res.id as string, status: 'sent' } : m)
+              } : c
+            ));
+          }
+        } catch (sendErr) {
+          console.error('Voice DB send failed, queuing:', sendErr);
+          const offlineId = await OfflineManager.queueMessage(voicePayload);
+          setConversations(prev => prev.map(c => ({
+            ...c,
+            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+          })));
+          setPendingCount(await OfflineManager.getPendingCount());
+        }
+      } else {
+        const offlineId = await OfflineManager.queueMessage(voicePayload);
+        setConversations(prev => prev.map(c => ({
+          ...c,
+          messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+        })));
+        setPendingCount(await OfflineManager.getPendingCount());
       }
     } catch (err) {
       console.error('Error sending voice message:', err);
@@ -1486,17 +1563,22 @@ function MessagesContent() {
       expiresAt = Date.now() + currentConv.vanishDuration * 1000;
     }
 
+    const tempId = `m${Date.now()}`;
+    const msgText = messageInput.trim();
+
     const newMsg: Message = {
-      id: `m${Date.now()}`,
+      id: tempId,
       senderId: CURRENT_USER_ID,
-      text: messageInput.trim(),
+      text: msgText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       seen: false,
       type: 'text',
       replyTo: replyingTo?.id,
       expiresAt: expiresAt,
+      status: 'sending',
     };
 
+    // Optimistic UI update — message appears instantly
     setConversations(prev => {
       const activeIdx = prev.findIndex(c => c.id === activeChat);
       if (activeIdx === -1) return prev;
@@ -1516,39 +1598,72 @@ function MessagesContent() {
     setReplyingTo(null);
     setShowEmojiPicker(false);
 
-    try {
-      const res = await dbSendMessage({
-        conversationId: activeChat,
-        senderId: currentUserId,
-        text: newMsg.text,
-        type: 'text',
-        replyTo: newMsg.replyTo,
-      });
+    const messagePayload = {
+      conversationId: activeChat,
+      senderId: currentUserId,
+      text: msgText,
+      type: 'text',
+      replyTo: newMsg.replyTo,
+    };
 
-      if (res.conversationId && res.conversationId !== activeChat) {
-        setActiveChat(res.conversationId);
-        setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, id: res.conversationId } : c));
-        // Update URL to reflect the new permanent conversation ID
-        const newParams = new URLSearchParams(searchParams.toString());
-        newParams.delete('userId');
-        newParams.set('chatId', res.conversationId);
-        router.replace(`/messages?${newParams.toString()}`, { scroll: false });
+    // Check network and decide: send now or queue for later
+    const online = await OfflineManager.isOnline();
+
+    if (online) {
+      try {
+        const res = await dbSendMessage(messagePayload);
+
+        // Mark as sent in UI
+        setConversations(prev => prev.map(c => {
+          const isTargetConv = c.id === activeChat || c.id === res.conversationId;
+          if (!isTargetConv) return c;
+          return {
+            ...c,
+            id: res.conversationId || c.id,
+            messages: c.messages.map(m => m.id === tempId ? { ...m, id: res.id || m.id, status: 'sent' as const } : m),
+          };
+        }));
+
+        if (res.conversationId && res.conversationId !== activeChat) {
+          setActiveChat(res.conversationId);
+          const newParams = new URLSearchParams(searchParams.toString());
+          newParams.delete('userId');
+          newParams.set('chatId', res.conversationId);
+          router.replace(`/messages?${newParams.toString()}`, { scroll: false });
+        }
+      } catch (err) {
+        console.error('Send message error, queuing offline:', err);
+        // Send failed — queue for background sync
+        const offlineId = await OfflineManager.queueMessage(messagePayload);
+        setConversations(prev => prev.map(c => ({
+          ...c,
+          messages: c.messages.map(m => m.id === tempId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+        })));
+        setPendingCount(await OfflineManager.getPendingCount());
       }
-    } catch (err) {
-      console.error('Send message error:', err);
+    } else {
+      // Device is offline — queue the message
+      const offlineId = await OfflineManager.queueMessage(messagePayload);
+      setConversations(prev => prev.map(c => ({
+        ...c,
+        messages: c.messages.map(m => m.id === tempId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+      })));
+      setPendingCount(await OfflineManager.getPendingCount());
     }
   };
 
 
   const sendHeart = async () => {
     if (!activeChat) return;
+    const tempId = `m${Date.now()}`;
     const heartMsg: Message = {
-      id: `m${Date.now()}`,
+      id: tempId,
       senderId: CURRENT_USER_ID,
       text: '❤️',
       timestamp: 'Just now',
       seen: false,
       type: 'heart',
+      status: 'sending',
     };
     
     setConversations(prev => {
@@ -1567,15 +1682,38 @@ function MessagesContent() {
       return [updatedConv, ...filtered];
     });
 
-    try {
-      await dbSendMessage({
-        conversationId: activeChat,
-        senderId: currentUserId,
-        text: '❤️',
-        type: 'heart',
-      });
-    } catch (err) {
-      console.error('Send heart error:', err);
+    const heartPayload = {
+      conversationId: activeChat,
+      senderId: currentUserId,
+      text: '❤️',
+      type: 'heart',
+    };
+
+    const online = await OfflineManager.isOnline();
+
+    if (online) {
+      try {
+        const res = await dbSendMessage(heartPayload);
+        setConversations(prev => prev.map(c => ({
+          ...c,
+          messages: c.messages.map(m => m.id === tempId ? { ...m, id: res.id || m.id, status: 'sent' as const } : m),
+        })));
+      } catch (err) {
+        console.error('Send heart error, queuing offline:', err);
+        const offlineId = await OfflineManager.queueMessage(heartPayload);
+        setConversations(prev => prev.map(c => ({
+          ...c,
+          messages: c.messages.map(m => m.id === tempId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+        })));
+        setPendingCount(await OfflineManager.getPendingCount());
+      }
+    } else {
+      const offlineId = await OfflineManager.queueMessage(heartPayload);
+      setConversations(prev => prev.map(c => ({
+        ...c,
+        messages: c.messages.map(m => m.id === tempId ? { ...m, id: offlineId, status: 'sending' as const } : m),
+      })));
+      setPendingCount(await OfflineManager.getPendingCount());
     }
   };
 
@@ -2066,6 +2204,22 @@ function MessagesContent() {
           )}
         </div>
 
+        {/* Offline Banner */}
+        {!isOnline && (
+          <div className="msg-offline-banner">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="1" y1="1" x2="23" y2="23" />
+              <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+              <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+              <path d="M10.71 5.05A16 16 0 0 1 22.56 9" />
+              <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+              <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+              <line x1="12" y1="20" x2="12.01" y2="20" />
+            </svg>
+            <span>No internet {pendingCount > 0 ? `· ${pendingCount} message${pendingCount > 1 ? 's' : ''} queued` : '· Messages will send when you reconnect'}</span>
+          </div>
+        )}
+
         {/* Messages Area */}
         <div className={`msg-messages-area ${activeConversation.vanishMode ? 'vanish-mode' : ''}`}>
           {activeConversation.vanishMode && (
@@ -2261,14 +2415,27 @@ function MessagesContent() {
                       <span className="msg-time">{msg.timestamp}</span>
                       {isMine && (
                         <div className={`msg-seen-status ${msg.seen ? 'seen' : ''}`}>
-                          <div className={`msg-status-icons ${msg.seen ? 'seen' : ''}`}>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-1">
-                              <polyline points="4 12 9 17 20 6" />
+                          {msg.status === 'sending' ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
                             </svg>
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-2">
-                              <polyline points="4 12 9 17 20 6" />
+                          ) : msg.status === 'error' ? (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <line x1="12" y1="8" x2="12" y2="12" />
+                              <line x1="12" y1="16" x2="12.01" y2="16" />
                             </svg>
-                          </div>
+                          ) : (
+                            <div className={`msg-status-icons ${msg.seen ? 'seen' : ''}`}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-1">
+                                <polyline points="4 12 9 17 20 6" />
+                              </svg>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="tick-2">
+                                <polyline points="4 12 9 17 20 6" />
+                              </svg>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
