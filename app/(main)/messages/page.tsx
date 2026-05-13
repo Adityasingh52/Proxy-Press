@@ -3031,7 +3031,6 @@ function MessagesContent() {
   };
 
   return (
-  return (
     <div className="msg-page-wrapper">
       <div className="msg-container animate-settingsFadeIn">
         {renderConversationList()}
