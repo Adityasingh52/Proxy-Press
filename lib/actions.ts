@@ -112,12 +112,22 @@ import { unstable_noStore as noStore } from 'next/cache';
 export async function getConversations(userId: string) {
   noStore();
   await cleanupExpiredMessages();
-  return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
+  // Cache conversations list per user for 15 seconds (polling will refresh)
+  return withCache(
+    `conversations:${userId}`,
+    async () => JSON.parse(JSON.stringify(await queries.getConversations(userId))),
+    15
+  );
 }
 
 export async function getMessages(conversationId: string) {
   noStore();
-  return JSON.parse(JSON.stringify(await queries.getMessages(conversationId)));
+  // Cache messages per conversation for 30 seconds (invalidated on new message)
+  return withCache(
+    `messages:${conversationId}`,
+    async () => JSON.parse(JSON.stringify(await queries.getMessages(conversationId))),
+    30
+  );
 }
 
 import { v2 as cloudinary } from 'cloudinary';
@@ -255,7 +265,7 @@ export async function sendMessage(data: {
       .from(schema.conversationParticipants)
       .where(eq(schema.conversationParticipants.userId, data.senderId));
     
-    const senderConvIds = senderConvs.map(c => c.conversationId);
+    const senderConvIds = senderConvs.map(c => c.conversationId).filter((id): id is string => id !== null);
     
     let existingConvId = null;
     if (senderConvIds.length > 0) {
@@ -347,8 +357,26 @@ export async function sendMessage(data: {
   // Cleanup expired messages in this conversation (triggered on new message)
   await cleanupExpiredMessages();
 
+  // Invalidate Redis caches for instant message delivery
+  await invalidateConversationCache(finalConversationId);
+
   revalidatePath('/messages');
   return { success: true, id: messageId, conversationId: finalConversationId };
+}
+
+// Helper to bust Redis caches for a conversation and its participants
+async function invalidateConversationCache(conversationId: string) {
+  try {
+    const participants = await db.query.conversationParticipants.findMany({
+      where: eq(schema.conversationParticipants.conversationId, conversationId)
+    });
+    await Promise.all([
+      redis.del(`messages:${conversationId}`).catch(() => null),
+      ...participants.map(p => redis.del(`conversations:${p.userId}`).catch(() => null)),
+    ]);
+  } catch (e) {
+    console.error('Cache invalidation error:', e);
+  }
 }
 
 export async function updateConversationMute(conversationId: string, muted: boolean) {
@@ -356,6 +384,7 @@ export async function updateConversationMute(conversationId: string, muted: bool
     .set({ muted })
     .where(eq(schema.conversations.id, conversationId));
   
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
@@ -368,6 +397,7 @@ export async function updateConversationVanishMode(conversationId: string, vanis
     })
     .where(eq(schema.conversations.id, conversationId));
   
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
@@ -381,6 +411,9 @@ export async function editMessage(messageId: string, newText: string) {
       })
       .where(eq(schema.messages.id, messageId));
     
+    // Invalidate cache: find the conversation for this message
+    const msg = await db.query.messages.findFirst({ where: eq(schema.messages.id, messageId) });
+    if (msg?.conversationId) await invalidateConversationCache(msg.conversationId);
     revalidatePath('/messages');
     return { success: true };
   } catch (err) {
@@ -400,6 +433,9 @@ export async function deleteMessage(messageId: string) {
       })
       .where(eq(schema.messages.id, messageId));
     
+    // Invalidate cache: find the conversation for this message
+    const msg = await db.query.messages.findFirst({ where: eq(schema.messages.id, messageId) });
+    if (msg?.conversationId) await invalidateConversationCache(msg.conversationId);
     revalidatePath('/messages');
     return { success: true };
   } catch (err) {
@@ -453,6 +489,7 @@ export async function deleteConversation(conversationId: string) {
     await db.delete(schema.conversations)
       .where(eq(schema.conversations.id, conversationId));
     
+    await invalidateConversationCache(conversationId);
     revalidatePath('/messages');
     revalidatePath('/', 'layout');
     return { success: true };
@@ -485,6 +522,7 @@ export async function markMessagesAsSeen(conversationId: string, userId: string)
       eq(schema.messages.seen, false)
     ));
 
+  await invalidateConversationCache(conversationId);
   revalidatePath('/messages');
   return { success: true };
 }
