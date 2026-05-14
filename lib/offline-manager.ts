@@ -239,10 +239,20 @@ export const OfflineManager = {
    */
   async saveData(key: string, data: any) {
     try {
+      const stringData = JSON.stringify(data);
+      // 1. Permanent Storage (Async)
       await Preferences.set({
         key: `pp_cache_${key}`,
-        value: JSON.stringify(data)
+        value: stringData
       });
+      // 2. Instant Storage (Sync Mirror) - For flicker-free initialization
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`pp_cache_${key}`, stringData);
+        // Also keep the old legacy key for compatibility with existing components
+        if (!key.startsWith('pp_cache_')) {
+          localStorage.setItem(key, stringData);
+        }
+      }
     } catch (err) {
       console.error(`[OfflineManager] Cache Save Error [${key}]:`, err);
     }
@@ -250,6 +260,13 @@ export const OfflineManager = {
 
   async loadData<T>(key: string): Promise<T | null> {
     try {
+      // 1. Try Instant Storage first (Sync)
+      if (typeof window !== 'undefined') {
+        const local = localStorage.getItem(`pp_cache_${key}`) || localStorage.getItem(key);
+        if (local) return JSON.parse(local);
+      }
+      
+      // 2. Fallback to Permanent Storage (Async)
       const { value } = await Preferences.get({ key: `pp_cache_${key}` });
       return value ? JSON.parse(value) : null;
     } catch (err) {

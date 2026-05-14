@@ -29,24 +29,6 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
-  const [user, setUser] = useState<any>(() => {
-    if (initialData?.user) return {
-      ...initialData.user,
-      postsCount: initialData.posts?.length || 0,
-      statusDisplay: initialData.statusDisplay || null
-    };
-    if (typeof window !== 'undefined') {
-      const cached = localStorage.getItem(`profile_cache_${id}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          return parsed.user;
-        } catch (e) { return null; }
-      }
-    }
-    return null;
-  });
-
   const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
     if (initialData?.currentUserId) return initialData.currentUserId;
     if (typeof window !== 'undefined') {
@@ -56,6 +38,37 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     }
     return null;
   });
+
+  const [user, setUser] = useState<any>(() => {
+    if (initialData?.user) return {
+      ...initialData.user,
+      postsCount: initialData.posts?.length || 0,
+      statusDisplay: initialData.statusDisplay || null
+    };
+    if (typeof window !== 'undefined') {
+      // 1. Check specific profile cache
+      const cached = localStorage.getItem(`profile_cache_${id}`);
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (parsed.user) return parsed.user;
+        } catch (e) { }
+      }
+
+      // 2. Check global user data if this is our own profile
+      const storedViewerId = localStorage.getItem('last_user_id') || localStorage.getItem('proxypress_viewer_id');
+      if (id === storedViewerId) {
+        const shared = localStorage.getItem('proxypress_user_data');
+        if (shared) {
+          try {
+            return JSON.parse(shared);
+          } catch (e) { }
+        }
+      }
+    }
+    return null;
+  });
+
   const isMe = currentUserId && (id === currentUserId || (user && currentUserId === user.id));
   
   const [userPosts, setUserPosts] = useState<any[]>(() => {
@@ -106,12 +119,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   
   const [isLoading, setIsLoading] = useState(() => {
     if (initialData) return false;
-    // Pre-check: If we have ANY cache, don't show a full-page spinner
-    if (typeof window !== 'undefined') {
-      const hasLocal = !!localStorage.getItem(`profile_cache_${id}`);
-      const hasShared = !!localStorage.getItem('proxypress_user_data');
-      return !(hasLocal || (isMe && hasShared));
-    }
+    // If we have user data from ANY cache (Local or Shared), we can show the UI immediately
+    if (user) return false;
     return true;
   });
   const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
