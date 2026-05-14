@@ -71,6 +71,8 @@ export default function HomeFeed() {
       }
     }
     loadData();
+  }, []);
+
   // ─── PULL TO REFRESH LOGIC ───
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);

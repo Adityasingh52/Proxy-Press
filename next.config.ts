@@ -2,7 +2,11 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
-turbopack: {
+  images: {
+    unoptimized: true,
+  },
+  trailingSlash: true,
+  turbopack: {
     root: path.resolve(__dirname),
   },
   allowedDevOrigins: ["192.168.56.1", "*.trycloudflare.com"],

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { categories } from '@/lib/data';
 import type { Category } from '@/lib/data';
 import { searchExploreAction, getExploreDataAction, toggleFollow, getCurrentUser, getFollowing } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
 import './explore.css';
 
 const categoryColors: Record<string, string> = {

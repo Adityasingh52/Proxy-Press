@@ -146,11 +146,24 @@ class SQLiteService {
       );
     `;
 
+    // Table for offline queued posts
+    const pendingPostsTable = `
+      CREATE TABLE IF NOT EXISTS pending_posts (
+        id TEXT PRIMARY KEY,
+        title TEXT,
+        description TEXT,
+        category TEXT,
+        localImageUrl TEXT,
+        createdAt TEXT
+      );
+    `;
+
     await this.db.execute(userTable);
     await this.db.execute(messagesTable);
     await this.db.execute(postsTable);
     await this.db.execute(globalFeedTable);
     await this.db.execute(exploreFeedTable);
+    await this.db.execute(pendingPostsTable);
   }
 
   // --- Profile Operations ---
@@ -328,6 +341,37 @@ class SQLiteService {
     if (!this.db) await this.initDB();
     const res = await this.db!.query('SELECT * FROM explore_feed;');
     return res.values || [];
+  }
+
+  // --- Pending Post Operations ---
+
+  async savePendingPost(post: any) {
+    if (!this.db) await this.initDB();
+    const query = `
+      INSERT OR REPLACE INTO pending_posts (
+        id, title, description, category, localImageUrl, createdAt
+      ) VALUES (?, ?, ?, ?, ?, ?);
+    `;
+    const params = [
+      post.id || `pp_${Date.now()}`,
+      post.title,
+      post.description,
+      post.category,
+      post.localImageUrl || null,
+      new Date().toISOString()
+    ];
+    await this.db!.run(query, params);
+  }
+
+  async getPendingPosts() {
+    if (!this.db) await this.initDB();
+    const res = await this.db!.query('SELECT * FROM pending_posts ORDER BY createdAt ASC;');
+    return res.values || [];
+  }
+
+  async deletePendingPost(id: string) {
+    if (!this.db) await this.initDB();
+    await this.db!.run('DELETE FROM pending_posts WHERE id = ?;', [id]);
   }
 }
 
