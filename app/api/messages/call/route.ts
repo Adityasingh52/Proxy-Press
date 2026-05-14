@@ -3,18 +3,14 @@ import { pusherServer } from '@/lib/pusher';
 
 export async function POST(req: Request) {
   try {
-    const { targetUserId, channelName, type, caller } = await req.json();
+    const { targetUserId, event, ...data } = await req.json();
 
-    if (!targetUserId || !channelName || !caller) {
-      return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
+    if (!targetUserId || !event) {
+      return NextResponse.json({ error: 'Missing targetUserId or event' }, { status: 400 });
     }
 
-    // Trigger the incoming-call event on the target user's private channel
-    await pusherServer.trigger(`private-user-${targetUserId}`, 'incoming-call', {
-      channelName,
-      type,
-      caller
-    });
+    // Trigger the dynamic event on the target user's private channel
+    await pusherServer.trigger(`private-user-${targetUserId}`, event, data);
 
     return NextResponse.json({ success: true });
   } catch (err) {

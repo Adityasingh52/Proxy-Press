@@ -659,6 +659,17 @@ function MessagesContent() {
         }
       });
 
+      channel.bind('call-accepted', () => {
+        if (activeCall && activeCall.mode === 'outgoing') {
+          setActiveCall(prev => prev ? { ...prev, mode: 'connected' } : null);
+          // Caller will actually join Agora room inside a useEffect watching activeCall.mode
+        }
+      });
+
+      channel.bind('call-rejected', () => {
+        setActiveCall(null);
+      });
+
       channel.bind('call-ended', () => {
         handleEndCall();
       });
@@ -947,11 +958,12 @@ function MessagesContent() {
         method: 'POST',
         body: JSON.stringify({
           targetUserId: activeConversation.user.id,
+          event: 'incoming-call',
           channelName,
           type,
           caller: {
             id: currentUserId,
-            name: 'Me', // You'd get this from your own profile
+            name: 'User', // In a real app, use the current user's name
             avatar: ''
           }
         })
@@ -962,10 +974,8 @@ function MessagesContent() {
     }
   };
 
-  const handleAcceptCall = async () => {
-    if (!activeCall || !activeCall.channelName) return;
-    
-    setActiveCall({ ...activeCall, mode: 'connected' });
+  const joinAgoraChannel = async () => {
+    if (!activeCall || !activeCall.channelName || agoraClient.current) return;
 
     try {
       const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
@@ -1002,12 +1012,53 @@ function MessagesContent() {
     }
   };
 
-  const handleDeclineCall = () => {
-    setActiveCall(null);
-    // Send decline signal...
+  useEffect(() => {
+    if (activeCall?.mode === 'connected' && !agoraClient.current) {
+      joinAgoraChannel();
+    }
+  }, [activeCall?.mode]);
+
+  const handleAcceptCall = async () => {
+    if (!activeCall || !activeCall.channelName) return;
+    
+    // 1. Notify Caller
+    await fetch('/api/messages/call', {
+      method: 'POST',
+      body: JSON.stringify({
+        targetUserId: activeCall.user.id,
+        event: 'call-accepted'
+      })
+    });
+
+    // 2. Set mode to connected (the useEffect will trigger joinAgoraChannel)
+    setActiveCall({ ...activeCall, mode: 'connected' });
   };
 
-  const handleEndCall = () => {
+  const handleDeclineCall = async () => {
+    if (activeCall) {
+      await fetch('/api/messages/call', {
+        method: 'POST',
+        body: JSON.stringify({
+          targetUserId: activeCall.user.id,
+          event: 'call-rejected'
+        })
+      });
+    }
+    setActiveCall(null);
+  };
+
+  const handleEndCall = async () => {
+    if (activeCall) {
+      // Notify Peer
+      fetch('/api/messages/call', {
+        method: 'POST',
+        body: JSON.stringify({
+          targetUserId: activeCall.user.id,
+          event: 'call-ended'
+        })
+      }).catch(() => {});
+    }
+
     if (agoraClient.current) {
       agoraClient.current.leave();
     }
