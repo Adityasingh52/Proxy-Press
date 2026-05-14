@@ -124,8 +124,8 @@ export default function MobileBottomNav() {
   const userId = searchParams.get('userId');
   
   const isMessages = pathname.startsWith('/messages');
-  const isSettings = pathname.startsWith('/settings');
-  const isEditProfile = pathname === '/profile/edit';
+  const isSettings = pathname.startsWith('/settings') || pathname.startsWith('/profile/settings');
+  const isEditProfile = pathname.startsWith('/profile/edit');
   
   // Hide footer if we are inside a story view (anywhere), inside a specific chat, or on settings/edit profile
   const shouldHide = isStory || (isMessages && (chatId || userId)) || isSettings || isEditProfile;
