@@ -106,8 +106,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   
   const [isLoading, setIsLoading] = useState(() => {
     if (initialData) return false;
+    // Pre-check: If we have ANY cache, don't show a full-page spinner
     if (typeof window !== 'undefined') {
-      return !localStorage.getItem(`profile_cache_${id}`);
+      const hasLocal = !!localStorage.getItem(`profile_cache_${id}`);
+      const hasShared = !!localStorage.getItem('proxypress_user_data');
+      return !(hasLocal || (isMe && hasShared));
     }
     return true;
   });
@@ -516,26 +519,38 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="ig-profile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="spinner" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="ig-profile" style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <h2 style={{ color: 'var(--text-primary)' }}>User not found</h2>
-        <p style={{ color: 'var(--text-muted)' }}>The profile you are looking for doesn't exist or has been removed.</p>
-        <Link href="/" style={{ color: 'var(--primary)', marginTop: '20px', display: 'inline-block' }}>Go Home</Link>
-      </div>
-    );
-  }
+  // Remove the blocking full-page spinner to allow partial/skeleton rendering
 
   return (
     <div className="ig-profile" id="profile-page" style={{ position: 'relative' }}>
+      {/* ─── Skeleton Loading State (Only if no user data yet) ─── */}
+      {!user && isLoading && (
+        <div className="profile-skeleton" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px' }}>
+            <div className="skeleton-circle" style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--surface-3)' }} />
+            <div style={{ flex: 1 }}>
+              <div className="skeleton-line" style={{ width: '60%', height: '20px', background: 'var(--surface-3)', marginBottom: '10px', borderRadius: '4px' }} />
+              <div className="skeleton-line" style={{ width: '40%', height: '14px', background: 'var(--surface-3)', borderRadius: '4px' }} />
+            </div>
+          </div>
+          <div className="skeleton-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} style={{ aspectRatio: '1/1', background: 'var(--surface-3)' }} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!user && !isLoading && (
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <h2 style={{ color: 'var(--text-primary)' }}>User not found</h2>
+          <p style={{ color: 'var(--text-muted)' }}>The profile you are looking for doesn't exist.</p>
+          <Link href="/" style={{ color: 'var(--primary)', marginTop: '20px', display: 'inline-block' }}>Go Home</Link>
+        </div>
+      )}
+
+      {user && (
+        <>
       {/* ─── Toast ─── */}
       {toast && (
         <div style={{
@@ -797,7 +812,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           </div>
         </div>
       )}
-
+        </>
+      )}
     </div>
   );
 }
