@@ -649,21 +649,24 @@ function MessagesContent() {
       channel = pusher.subscribe(`private-user-${currentUserId}`);
       
       channel.bind('incoming-call', (data: any) => {
-        if (!activeCall) {
-          setActiveCall({
+        setActiveCall(prev => {
+          if (prev) return prev; // Ignore if already in a call
+          return {
             type: data.type,
             mode: 'incoming',
             user: data.caller,
             channelName: data.channelName
-          });
-        }
+          };
+        });
       });
 
       channel.bind('call-accepted', () => {
-        if (activeCall && activeCall.mode === 'outgoing') {
-          setActiveCall(prev => prev ? { ...prev, mode: 'connected' } : null);
-          // Caller will actually join Agora room inside a useEffect watching activeCall.mode
-        }
+        setActiveCall(prev => {
+          if (prev && prev.mode === 'outgoing') {
+            return { ...prev, mode: 'connected' };
+          }
+          return prev;
+        });
       });
 
       channel.bind('call-rejected', () => {
@@ -681,7 +684,7 @@ function MessagesContent() {
       if (channel) channel.unbind_all();
       if (pusher) pusher.disconnect();
     };
-  }, [currentUserId, activeCall]);
+  }, [currentUserId]);
 
   const [lightboxControlsVisible, setLightboxControlsVisible] = useState(true);
   const [lightboxRotation, setLightboxRotation] = useState(0);
