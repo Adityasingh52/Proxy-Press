@@ -94,15 +94,18 @@ export default function MobileBottomNav() {
     loadInstantId();
   }, []);
 
-  // 1. Initial Data Load & Periodic Refresh (Mount Only)
+  // 1. Static Prefetching (Run once to warm up the cache)
   useEffect(() => {
-    // PREFETCH all routes for instant navigation
     router.prefetch('/');
     router.prefetch('/explore');
     router.prefetch('/create');
     router.prefetch('/messages');
+    if (currentUserId) router.prefetch(`/profile/${currentUserId}`);
+  }, [router, currentUserId]);
 
-    async function initLoad() {
+  // 2. Background Sync (Lightweight & Non-Blocking)
+  useEffect(() => {
+    async function backgroundSync() {
       try {
         const actions = await import('@/lib/actions');
         const user = await actions.getCurrentUser();
@@ -112,32 +115,26 @@ export default function MobileBottomNav() {
           OfflineManager.saveData('last_user_id', user.id);
           localStorage.setItem('last_user_id', user.id);
           
-          // Prefetch the specific profile route once we have the ID
-          router.prefetch(`/profile/${user.id}`);
-
-          // Refresh count immediately
           const count = await actions.getUnreadMessageCountAction();
           setUnreadCount(count);
-          const profileData = await actions.getProfileData(user.id);
-
-          if (profileData) {
-            OfflineManager.saveData(`profile_cache_${user.id}`, { ...profileData, timestamp: Date.now() });
-          }
+          
+          // Sync profile data in background without blocking UI
+          actions.getProfileData(user.id).then(data => {
+            if (data) OfflineManager.saveData(`profile_cache_${user.id}`, { ...data, timestamp: Date.now() });
+          });
         }
-      } catch (e) {
-        console.error('Initial load failed', e);
-      }
+      } catch (e) {}
     }
 
-    initLoad();
-    const interval = setInterval(initLoad, 20000); // 20s interval is enough
+    backgroundSync();
+    const interval = setInterval(backgroundSync, 30000); // Increased interval for better battery/performance
     return () => clearInterval(interval);
-  }, [router]);
+  }, []);
 
-  // 2. Lightweight Pathname Refresh (Only for notifications/badge)
+  // 3. UI State Sync
   useEffect(() => {
     getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
-    setOptimisticTab(null); // Sync back to real path when navigation finishes
+    setOptimisticTab(null);
   }, [pathname]);
 
   const isStory = searchParams.get('story') === 'true';
@@ -191,21 +188,7 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={href}
-              onClick={(e) => {
-                setOptimisticTab(item.href);
-                // Hard safety for profile: If we still don't have an ID, try to get it before navigating
-                if (item.href === '/profile' && !currentUserId) {
-                   e.preventDefault();
-                   import('@/lib/actions').then(m => m.getCurrentUser()).then(u => {
-                     if (u) {
-                       setCurrentUserId(u.id);
-                       router.push(`/profile/${u.id}`);
-                     } else {
-                       router.push('/login');
-                     }
-                   });
-                }
-              }}
+              onClick={() => setOptimisticTab(item.href)}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">
