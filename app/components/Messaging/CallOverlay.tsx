@@ -11,7 +11,7 @@ interface CallUser {
 
 interface CallOverlayProps {
   type: 'voice' | 'video';
-  mode: 'incoming' | 'outgoing';
+  mode: 'incoming' | 'outgoing' | 'connected';
   targetUser: CallUser;
   onAccept: () => void;
   onDecline: () => void;
@@ -27,11 +27,18 @@ export default function CallOverlay({
   onEnd
 }: CallOverlayProps) {
   const [status, setStatus] = useState<'ringing' | 'connected' | 'ended'>(
-    mode === 'incoming' || mode === 'outgoing' ? 'ringing' : 'connected'
+    mode === 'connected' ? 'connected' : 'ringing'
   );
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
+
+  // Sync internal status with mode prop
+  useEffect(() => {
+    if (mode === 'connected') {
+      setStatus('connected');
+    }
+  }, [mode]);
 
   // Timer for connected state
   useEffect(() => {
@@ -75,7 +82,9 @@ export default function CallOverlay({
         <p className="call-status">
           {status === 'connected' 
             ? formatTime(callDuration) 
-            : mode === 'incoming' ? 'Incoming Call...' : 'Calling...'}
+            : mode === 'incoming' 
+              ? `Incoming ${type === 'video' ? 'Video' : 'Voice'} Call...` 
+              : `${type === 'video' ? 'Video' : 'Voice'} Calling...`}
         </p>
       </div>
 
