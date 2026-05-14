@@ -126,9 +126,36 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     async function loadCache() {
       if (cacheLoaded.current) return;
       
+      // 1. Try SQLite first (New Relational Engine)
+      const offlineProfile = await OfflineManager.getOfflineProfile();
+      const offlinePosts = await OfflineManager.getOfflinePosts();
+
+      if (offlineProfile && !initialData) {
+        console.log(`[Offline] SQLite Profile loaded for: ${id}`);
+        
+        // Use the local cached images if available
+        const userToSet = {
+          ...offlineProfile,
+          avatar: offlineProfile.localAvatar || offlineProfile.avatar,
+          profilePicture: offlineProfile.localAvatar || offlineProfile.profilePicture
+        };
+
+        const postsToSet = offlinePosts.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl
+        }));
+
+        setUser(userToSet);
+        setUserPosts(postsToSet);
+        setIsLoading(false);
+        cacheLoaded.current = true;
+        return;
+      }
+
+      // 2. Fallback to Preferences/LocalStorage (Legacy)
       const cached = await OfflineManager.loadData<any>(`profile_cache_${id}`);
       if (cached && !initialData) {
-        console.log(`[Offline] Instant profile load for: ${id}`);
+        console.log(`[Offline] Legacy Cache load for: ${id}`);
         setUser(cached.user);
         setUserPosts(cached.posts);
         setIsFollowing(cached.isFollowing);
@@ -163,6 +190,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
             if (typeof window !== 'undefined') {
               localStorage.setItem('last_user_id', freshData.currentUserId);
               localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
+            }
+            
+            // SYNC TO SQLITE if this is my profile
+            if (id === freshData.currentUserId) {
+              OfflineManager.syncAllUserData(freshData.currentUserId);
             }
           }
 

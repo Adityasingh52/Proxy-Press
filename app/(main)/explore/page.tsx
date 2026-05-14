@@ -29,6 +29,18 @@ export default function ExplorePage() {
   // Load initial data
   useEffect(() => {
     async function loadInitial() {
+      // 1. Try SQLite Offline Feed First
+      const offlineExplore = await OfflineManager.getOfflineExploreFeed();
+      if (offlineExplore && offlineExplore.length > 0) {
+        console.log('[Offline] SQLite Explore Feed loaded');
+        const adapted = offlineExplore.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl
+        }));
+        setTrendingPosts(adapted);
+        setIsLoading(false);
+      }
+
       try {
         const [data, user] = await Promise.all([
           getExploreDataAction(),
@@ -41,6 +53,9 @@ export default function ExplorePage() {
           setCurrentUserId(user.id);
           const following = await getFollowing(user.id);
           setMyFollowingIds(new Set(following.map((u: any) => u.id)));
+          
+          // Background sync to keep SQLite fresh
+          OfflineManager.syncExploreFeed();
         }
       } catch (err) {
         console.error('Failed to load explore data:', err);

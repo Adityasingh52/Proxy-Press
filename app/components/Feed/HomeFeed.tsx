@@ -17,9 +17,26 @@ export default function HomeFeed() {
     async function loadCache() {
       if (cacheLoaded.current) return;
       
+      // 1. Try SQLite Global Feed first
+      const offlineFeed = await OfflineManager.getOfflineHomeFeed();
+      if (offlineFeed && offlineFeed.length > 0) {
+        console.log('[Offline] SQLite Home Feed loaded');
+        const adapted = offlineFeed.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl,
+          author: { name: p.authorName, avatar: p.authorAvatar },
+          timeAgo: p.publishedAt ? formatTimeAgo(p.publishedAt) : 'Recently',
+        }));
+        setPosts(adapted);
+        setIsLoading(false);
+        cacheLoaded.current = true;
+        return;
+      }
+
+      // 2. Legacy Preferences Fallback
       const cached = await OfflineManager.loadData<any>('home_feed_cache');
       if (cached && cached.posts && cached.posts.length > 0) {
-        console.log('[Offline] Instant home feed load');
+        console.log('[Offline] Legacy cache load');
         setPosts(cached.posts);
         setIsLoading(false);
       }
@@ -54,7 +71,67 @@ export default function HomeFeed() {
       }
     }
     loadData();
-  }, []);
+  // ─── PULL TO REFRESH LOGIC ───
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const touchStart = useRef(0);
+  const isPulling = useRef(false);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (window.scrollY === 0) {
+      touchStart.current = e.touches[0].clientY;
+      isPulling.current = true;
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling.current) return;
+    const currentTouch = e.touches[0].clientY;
+    const distance = currentTouch - touchStart.current;
+
+    if (distance > 0 && window.scrollY === 0) {
+      // Add resistance to the pull
+      const dampenedDistance = Math.min(distance * 0.4, 80);
+      setPullDistance(dampenedDistance);
+      if (dampenedDistance > 10) {
+        if (e.cancelable) e.preventDefault();
+      }
+    }
+  };
+
+  const handleTouchEnd = async () => {
+    if (!isPulling.current) return;
+    isPulling.current = false;
+
+    if (pullDistance > 60) {
+      await performRefresh();
+    }
+    setPullDistance(0);
+  };
+
+  const performRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      // 1. Sync from server to SQLite
+      await OfflineManager.syncHomeFeed();
+      
+      // 2. Load the fresh data from SQLite
+      const freshData = await OfflineManager.getOfflineHomeFeed();
+      if (freshData && freshData.length > 0) {
+        const adapted = freshData.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl,
+          author: { name: p.authorName, avatar: p.authorAvatar },
+          timeAgo: p.publishedAt ? formatTimeAgo(p.publishedAt) : 'Recently',
+        }));
+        setPosts(adapted);
+      }
+    } catch (err) {
+      console.error('Refresh failed', err);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
 
 
 
@@ -72,7 +149,37 @@ export default function HomeFeed() {
     : filteredPosts;
 
   return (
-    <div className="feed-container" id="home-feed">
+    <div 
+      className="feed-container" 
+      id="home-feed"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      style={{
+        transform: `translateY(${pullDistance}px)`,
+        transition: isPulling.current ? 'none' : 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)'
+      }}
+    >
+      {/* Pull indicator */}
+      <div style={{
+        position: 'absolute',
+        top: -40,
+        left: 0,
+        right: 0,
+        height: 40,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pullDistance / 60,
+        color: 'var(--primary)',
+        fontSize: '12px',
+        fontWeight: 600,
+        gap: '8px'
+      }}>
+        <div className={`spinner ${isRefreshing ? '' : 'paused'}`} style={{ width: '16px', height: '16px', borderWidth: '2px' }} />
+        {isRefreshing ? 'Updating...' : 'Pull to update'}
+      </div>
+
       {/* Category filters */}
       <CategoryFilters 
         activeCategory={activeCategory} 

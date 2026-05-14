@@ -2,6 +2,7 @@
 
 import { Preferences } from '@capacitor/preferences';
 import { Network } from '@capacitor/network';
+import { sqliteService } from './sqlite-db';
 
 /* ─────────── TYPES ─────────── */
 export interface PendingMessage {
@@ -38,6 +39,14 @@ export const OfflineManager = {
   async init() {
     if (this._initialized) return;
     this._initialized = true;
+
+    // Initialize SQLite
+    try {
+      await sqliteService.initDB();
+      console.log('[OfflineManager] SQLite DB Ready.');
+    } catch (err) {
+      console.error('[OfflineManager] Failed to init SQLite:', err);
+    }
 
     // Listen for network status changes
     Network.addListener('networkStatusChange', (status) => {
@@ -101,7 +110,6 @@ export const OfflineManager = {
    * The message will be sent automatically when the device is back online.
    */
   async queueMessage(messageData: Omit<PendingMessage, 'tempId' | 'queuedAt' | 'retryCount'>): Promise<string> {
-    const queue = await this._getQueue();
     const tempId = `offline_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     const pendingMsg: PendingMessage = {
@@ -111,10 +119,19 @@ export const OfflineManager = {
       retryCount: 0,
     };
 
+    // Save to SQLite as 'pending'
+    await sqliteService.saveMessage({
+      ...pendingMsg,
+      id: tempId,
+      timestamp: pendingMsg.queuedAt
+    }, 'pending');
+    
+    // Also keep in Preferences for backward compatibility/quick access if needed
+    const queue = await this._getQueue();
     queue.push(pendingMsg);
     await this._saveQueue(queue);
     
-    console.log(`[OfflineManager] Queued message: ${tempId} (${queue.length} in queue)`);
+    console.log(`[OfflineManager] Queued message in SQLite: ${tempId}`);
     return tempId;
   },
 
@@ -152,6 +169,15 @@ export const OfflineManager = {
 
         console.log(`[OfflineManager] ✓ Sent queued message: ${msg.tempId}`);
         
+        // Update SQLite status to 'sent' and set real ID
+        if (result.id) {
+          await sqliteService.saveMessage({
+            ...msg,
+            id: result.id,
+            timestamp: new Date().toISOString()
+          }, 'sent');
+        }
+
         // Notify subscribers that a queued message was sent
         this._flushCallbacks.forEach(cb => cb(msg, result));
 
@@ -229,6 +255,269 @@ export const OfflineManager = {
     } catch (err) {
       console.error(`[OfflineManager] Cache Load Error [${key}]:`, err);
       return null;
+    }
+  },
+
+  /**
+   * --- PROFILE OFFLINE SUPPORT ---
+   */
+  async syncUserProfile(profile: any) {
+    if (!profile) return;
+    console.log('[OfflineManager] Syncing profile to local SQLite...');
+    await sqliteService.saveUserProfile(profile);
+  },
+
+  async getOfflineProfile() {
+    return await sqliteService.getLocalProfile();
+  },
+
+  /**
+   * --- COMPREHENSIVE SYNC ---
+   * Fetches the entire logged-in user profile and their posts 
+   * and saves them to SQLite for a full offline experience.
+   */
+  async syncAllUserData(userId: string) {
+    if (!userId) return;
+    
+    console.log(`[OfflineManager] Starting full sync for user: ${userId}`);
+    
+    try {
+      // 1. Check internet
+      const online = await this.isOnline();
+      if (!online) {
+        console.log('[OfflineManager] Offline, skipping full sync.');
+        return;
+      }
+
+      // 2. Fetch fresh data from server
+      const { getProfileData } = await import('./actions');
+      const data = await getProfileData(userId);
+
+      if (data && data.user) {
+        // 3. Cache Profile Picture
+        const { ImageCache } = await import('./image-cache');
+        const localAvatar = await ImageCache.getCachedImage(data.user.avatar || data.user.image, 'profiles');
+        
+        // Save Profile with local path
+        await this.syncUserProfile({
+          ...data.user,
+          localAvatar
+        });
+
+        // 4. Save Posts with cached images (Strict 10 Limit)
+        if (data.posts && Array.isArray(data.posts)) {
+          const recentPosts = data.posts.slice(0, 10);
+          console.log(`[OfflineManager] Syncing and caching ${recentPosts.length} most recent posts...`);
+          
+          // Clear old posts first
+          await sqliteService.clearLocalPosts();
+          
+          for (const post of recentPosts) {
+            const localImageUrl = await ImageCache.getCachedImage(post.imageUrl, 'posts');
+            await sqliteService.saveUserPost({
+              ...post,
+              localImageUrl
+            });
+          }
+        }
+
+        console.log('[OfflineManager] Profile and Posts sync complete! ✓');
+        
+        // 5. Sync Messages (Instagram Approach)
+        await this.syncMessages(userId);
+
+        // 6. Sync Explore Feed (Top 5)
+        await this.syncExploreFeed();
+      }
+    } catch (err) {
+      console.error('[OfflineManager] Full sync failed:', err);
+    }
+  },
+
+  async getOfflinePosts() {
+    return await sqliteService.getLocalPosts();
+  },
+
+  /**
+   * --- HOME FEED SYNC (Smart & Light) ---
+   * Syncs the top 10 image-based posts for the home feed.
+   * Skips videos to save storage and bandwidth.
+   */
+  async syncHomeFeed() {
+    console.log('[OfflineManager] Syncing Home Feed...');
+    try {
+      const online = await this.isOnline();
+      if (!online) return;
+
+      const { getInitialData } = await import('./actions');
+      const { ImageCache } = await import('./image-cache');
+      
+      const data = await getInitialData();
+      if (data && data.posts && Array.isArray(data.posts)) {
+        // 1. Filter: No Videos + Limit 10
+        const lightPosts = data.posts
+          .filter((p: any) => !p.videoUrl)
+          .slice(0, 10);
+
+        console.log(`[OfflineManager] Caching ${lightPosts.length} home stories (No Videos)...`);
+        
+        await sqliteService.clearGlobalFeed();
+
+        for (const post of lightPosts) {
+          // 2. Cache the post image
+          const localImageUrl = await ImageCache.getCachedImage(post.imageUrl, 'home');
+          
+          await sqliteService.saveGlobalPost({
+            ...post,
+            localImageUrl
+          });
+        }
+        console.log('[OfflineManager] Home Feed sync complete! ✓');
+      }
+    } catch (err) {
+      console.error('[OfflineManager] Home Feed sync failed:', err);
+    }
+  },
+
+  async getOfflineHomeFeed() {
+    return await sqliteService.getGlobalFeed();
+  },
+
+  /**
+   * --- EXPLORE FEED SYNC (Ultra Light) ---
+   * Syncs only the top 5 trending posts for the explore page.
+   */
+  async syncExploreFeed() {
+    console.log('[OfflineManager] Syncing Explore Feed...');
+    try {
+      const online = await this.isOnline();
+      if (!online) return;
+
+      const { getExploreDataAction } = await import('./actions');
+      const { ImageCache } = await import('./image-cache');
+
+      const data = await getExploreDataAction();
+      if (data && data.trendingPosts && Array.isArray(data.trendingPosts)) {
+        const top5 = data.trendingPosts.slice(0, 5);
+        
+        await sqliteService.clearExploreFeed();
+        
+        for (const post of top5) {
+          const localImageUrl = await ImageCache.getCachedImage(post.imageUrl, 'explore');
+          await sqliteService.saveExplorePost({
+            ...post,
+            localImageUrl
+          });
+        }
+        console.log('[OfflineManager] Explore sync complete! ✓');
+      }
+    } catch (err) {
+      console.error('[OfflineManager] Explore sync failed:', err);
+    }
+  },
+
+  async getOfflineExploreFeed() {
+    return await sqliteService.getExploreFeed();
+  },
+
+  /**
+   * --- SMART MESSAGE SYNC (Instagram Approach) ---
+   * Syncs only recent conversations and recent messages to save space.
+   */
+  async syncMessages(userId: string) {
+    if (!userId) return;
+    console.log('[OfflineManager] Starting Smart Message Sync...');
+
+    try {
+      const { getConversations, getMessages } = await import('./actions');
+      const { ImageCache } = await import('./image-cache');
+
+      // 1. Get recent conversations (Limit to 15 most recent)
+      const convs = await getConversations(userId);
+      const recentConvs = convs.slice(0, 15);
+
+      for (const conv of recentConvs) {
+        // 2. Get recent messages for this chat (Limit to 30)
+        const allMsgs = await getMessages(conv.id);
+        const recentMsgs = allMsgs.slice(0, 30);
+
+        console.log(`[OfflineManager] Syncing ${recentMsgs.length} messages for chat: ${conv.id}`);
+
+        for (const [index, msg] of recentMsgs.entries()) {
+          let localAttachment = null;
+
+          // 3. Instagram Approach: Only cache images for the very latest messages (e.g., top 5)
+          // This keeps the "bulky" images only for what the user is likely to see.
+          if (msg.type === 'image' && msg.attachment && index < 5) {
+            localAttachment = await ImageCache.getCachedImage(msg.attachment, 'chats');
+          }
+
+          await sqliteService.saveMessage({
+            ...msg,
+            localAttachment
+          }, 'sent');
+        }
+      }
+      console.log('[OfflineManager] Message sync complete! ✓');
+    } catch (err) {
+      console.error('[OfflineManager] Message sync failed:', err);
+    }
+  },
+
+  /**
+   * --- OFFLINE POST QUEUING ---
+   */
+  async queuePost(post: any) {
+    console.log('[OfflineManager] Queuing post for offline upload:', post.title);
+    await sqliteService.savePendingPost(post);
+  },
+
+  async flushPendingPosts() {
+    const pending = await sqliteService.getPendingPosts();
+    if (pending.length === 0) return;
+
+    console.log(`[OfflineManager] 🚀 Found ${pending.length} pending posts. Starting upload...`);
+
+    const { createPost, uploadMedia, getCurrentUser } = await import('./actions');
+
+    for (const post of pending) {
+      try {
+        const user = await getCurrentUser();
+        if (!user) continue;
+
+        let finalMediaUrl = '';
+        let finalVideoUrl = '';
+
+        // 1. Upload cached media if exists
+        if (post.localImageUrl) {
+          const res = await fetch(post.localImageUrl);
+          const blob = await res.blob();
+          const file = new File([blob], "offline-upload.jpg", { type: blob.type });
+          
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('category', 'images');
+          const uploadRes = await uploadMedia(formData);
+          finalMediaUrl = uploadRes.url;
+        }
+
+        // 2. Create the post
+        await createPost({
+          title: post.title,
+          description: post.description,
+          content: post.description,
+          category: post.category,
+          imageUrl: finalMediaUrl || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=800&q=80',
+          authorId: user.id
+        });
+
+        // 3. Delete from pending list
+        await sqliteService.deletePendingPost(post.id);
+        console.log(`[OfflineManager] ✓ Successfully published offline post: ${post.title}`);
+
+      } catch (err) {
+        console.error(`[OfflineManager] ✗ Failed to upload offline post: ${post.title}`, err);
+      }
     }
   }
 };
