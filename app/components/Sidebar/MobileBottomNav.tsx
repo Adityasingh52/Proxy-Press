@@ -72,15 +72,20 @@ export default function MobileBottomNav() {
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
   
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('last_user_id') || localStorage.getItem('proxypress_viewer_id');
+    }
+    return null;
+  });
 
-  // Sync with localStorage AFTER mount to avoid hydration mismatch
+  // Sync with localStorage AFTER mount to handle any external changes
   useEffect(() => {
     const savedId = localStorage.getItem('last_user_id');
-    if (savedId) {
+    if (savedId && savedId !== currentUserId) {
       setCurrentUserId(savedId);
     }
-  }, []);
+  }, [currentUserId]);
 
   // 0. Instant Cache Load (Upgrade from native cache if available)
   useEffect(() => {

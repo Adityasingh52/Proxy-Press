@@ -45,8 +45,15 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
       postsCount: initialData.posts?.length || 0,
       statusDisplay: initialData.statusDisplay || null
     };
+    
     if (typeof window !== 'undefined') {
-      // 1. Check specific profile cache
+      // 1. If looking at OWN profile, try to load self from instant cache
+      if (currentUserId && id === currentUserId) {
+        const cachedSelf = localStorage.getItem(`profile_cache_${currentUserId}`);
+        if (cachedSelf) return JSON.parse(cachedSelf);
+      }
+
+      // 2. Check specific profile cache
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
