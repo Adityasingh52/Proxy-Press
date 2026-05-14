@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import MobileBottomNav from '@/app/components/Sidebar/MobileBottomNav';
+import CallOverlay from '@/app/components/Messaging/CallOverlay';
 import './messages.css';
 import { 
   getConversations, 
@@ -620,6 +621,57 @@ function MessagesContent() {
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [lightboxMedia, setLightboxMedia] = useState<{ url: string; msgId: string; sender: string; time: string; type: 'image' | 'video' } | null>(null);
 
+  /* ─── Calling State ─── */
+  const [activeCall, setActiveCall] = useState<{
+    type: 'voice' | 'video';
+    mode: 'incoming' | 'outgoing' | 'connected';
+    user: any;
+    channelName?: string;
+  } | null>(null);
+
+  /* ─── Calling Logic (Agora & Pusher) ─── */
+  const agoraClient = useRef<any>(null);
+  const localTracks = useRef<any[]>([]);
+
+  useEffect(() => {
+    if (!currentUserId || currentUserId === 'me') return;
+
+    let pusher: any;
+    let channel: any;
+
+    async function setupSignaling() {
+      const Pusher = (await import('pusher-js')).default;
+      pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+        cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
+        authEndpoint: '/api/pusher/auth',
+      });
+
+      channel = pusher.subscribe(`private-user-${currentUserId}`);
+      
+      channel.bind('incoming-call', (data: any) => {
+        if (!activeCall) {
+          setActiveCall({
+            type: data.type,
+            mode: 'incoming',
+            user: data.caller,
+            channelName: data.channelName
+          });
+        }
+      });
+
+      channel.bind('call-ended', () => {
+        handleEndCall();
+      });
+    }
+
+    setupSignaling();
+
+    return () => {
+      if (channel) channel.unbind_all();
+      if (pusher) pusher.disconnect();
+    };
+  }, [currentUserId, activeCall]);
+
   const [lightboxControlsVisible, setLightboxControlsVisible] = useState(true);
   const [lightboxRotation, setLightboxRotation] = useState(0);
   const [showLightboxMenu, setShowLightboxMenu] = useState(false);
@@ -819,13 +871,13 @@ function MessagesContent() {
         id: newMsgId,
         senderId: currentUserId,
         text: 'Voice message',
-        timestamp: 'Just now',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'sent',
         type: 'voice',
         attachment: fileUrl,
-        status: 'sending'
       };
 
-      // 3. Update local UI state
+      // 3. Update local state
       setConversations(prev => prev.map(c => 
         c.id === activeChat ? { 
           ...c, 
@@ -858,27 +910,113 @@ function MessagesContent() {
               } : c
             ));
           }
-        } catch (sendErr) {
-          console.error('Voice DB send failed, queuing:', sendErr);
-          const offlineId = await OfflineManager.queueMessage(voicePayload);
-          setConversations(prev => prev.map(c => ({
-            ...c,
-            messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: offlineId, status: 'sending' as const } : m),
-          })));
-          setPendingCount(await OfflineManager.getPendingCount());
+        } catch (err) {
+           console.error("DB Save failed for voice", err);
         }
       } else {
-        const offlineId = await OfflineManager.queueMessage(voicePayload);
-        setConversations(prev => prev.map(c => ({
-          ...c,
-          messages: c.messages.map(m => m.id === newMsgId ? { ...m, id: offlineId, status: 'sending' as const } : m),
-        })));
-        setPendingCount(await OfflineManager.getPendingCount());
+        // Queue for later
+        await OfflineManager.queueMessage({ ...voicePayload, tempId: newMsgId });
+        setConversations(prev => prev.map(c => 
+          c.id === activeChat ? { 
+            ...c, 
+            messages: c.messages.map(m => m.id === newMsgId ? { ...m, status: 'sending' } : m)
+          } : c
+        ));
       }
     } catch (err) {
-      console.error('Error sending voice message:', err);
-      alert('Failed to send voice message');
+      console.error('Failed to send voice message:', err);
+      alert('Could not send voice message');
     }
+  };
+
+  /* ─── Signaling & Calling Logic ─── */
+  const startCall = async (type: 'voice' | 'video') => {
+    if (!activeConversation) return;
+    
+    const channelName = `call_${Date.now()}`;
+    setActiveCall({
+      type,
+      mode: 'outgoing',
+      user: activeConversation.user,
+      channelName
+    });
+
+    try {
+      // 1. Trigger Signaling via API (Pusher)
+      await fetch('/api/messages/call', {
+        method: 'POST',
+        body: JSON.stringify({
+          targetUserId: activeConversation.user.id,
+          channelName,
+          type,
+          caller: {
+            id: currentUserId,
+            name: 'Me', // You'd get this from your own profile
+            avatar: ''
+          }
+        })
+      });
+    } catch (err) {
+      console.error('Failed to start call:', err);
+      setActiveCall(null);
+    }
+  };
+
+  const handleAcceptCall = async () => {
+    if (!activeCall || !activeCall.channelName) return;
+    
+    setActiveCall({ ...activeCall, mode: 'connected' });
+
+    try {
+      const AgoraRTC = (await import('agora-rtc-sdk-ng')).default;
+      agoraClient.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+      
+      const appId = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
+      await agoraClient.current.join(appId, activeCall.channelName, null, null);
+
+      // Create Local Tracks
+      if (activeCall.type === 'video') {
+        const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
+        localTracks.current = [audioTrack, videoTrack];
+        videoTrack.play('local-player');
+        await agoraClient.current.publish([audioTrack, videoTrack]);
+      } else {
+        const audioTrack = await AgoraRTC.createMicrophoneAudioTrack();
+        localTracks.current = [audioTrack];
+        await agoraClient.current.publish([audioTrack]);
+      }
+
+      // Handle Remote Tracks
+      agoraClient.current.on('user-published', async (user: any, mediaType: string) => {
+        await agoraClient.current.subscribe(user, mediaType);
+        if (mediaType === 'video') {
+          user.videoTrack.play('remote-player');
+        } else {
+          user.audioTrack.play();
+        }
+      });
+
+    } catch (err) {
+      console.error('Agora Join Error:', err);
+      handleEndCall();
+    }
+  };
+
+  const handleDeclineCall = () => {
+    setActiveCall(null);
+    // Send decline signal...
+  };
+
+  const handleEndCall = () => {
+    if (agoraClient.current) {
+      agoraClient.current.leave();
+    }
+    localTracks.current.forEach(track => {
+      track.stop();
+      track.close();
+    });
+    localTracks.current = [];
+    setActiveCall(null);
   };
 
   const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
@@ -2300,12 +2438,12 @@ function MessagesContent() {
                 </div>
               </div>
               <div className="msg-chat-header-actions">
-                <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => setShowFutureModal(true)}>
+                <button className="msg-chat-action-btn" aria-label="Audio call" onClick={() => startCall('voice')}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
                   </svg>
                 </button>
-                <button className="msg-chat-action-btn" aria-label="Video call" onClick={() => setShowFutureModal(true)}>
+                <button className="msg-chat-action-btn" aria-label="Video call" onClick={() => startCall('video')}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <polygon points="23 7 16 12 23 17 23 7" />
                     <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
@@ -3680,6 +3818,21 @@ function MessagesContent() {
         </div>
       )}
 
+      {/* Call Overlay */}
+      {activeCall && (
+        <CallOverlay
+          type={activeCall.type}
+          mode={activeCall.mode === 'connected' ? 'connected' : activeCall.mode as any}
+          targetUser={{
+            id: activeCall.user.id,
+            name: activeCall.user.name,
+            avatar: activeCall.user.profilePicture || activeCall.user.avatar
+          }}
+          onAccept={handleAcceptCall}
+          onDecline={handleDeclineCall}
+          onEnd={handleEndCall}
+        />
+      )}
     </div>
 
 

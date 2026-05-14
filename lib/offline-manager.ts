@@ -292,14 +292,27 @@ export const OfflineManager = {
    * --- COMPREHENSIVE SYNC ---
    * Fetches the entire logged-in user profile and their posts 
    * and saves them to SQLite for a full offline experience.
+   * 
+   * Includes a 10-minute THROTTLE to prevent UI lag on repeat visits.
    */
-  async syncAllUserData(userId: string) {
+  async syncAllUserData(userId: string, force = false) {
     if (!userId) return;
     
+    // 1. Check Throttle (Skip if synced in the last 10 minutes, unless forced)
+    const SYNC_WINDOW = 10 * 60 * 1000; // 10 Minutes
+    const lastSyncKey = `last_full_sync_${userId}`;
+    const lastSync = await this.loadData<number>(lastSyncKey);
+    const now = Date.now();
+
+    if (!force && lastSync && (now - lastSync < SYNC_WINDOW)) {
+      console.log(`[OfflineManager] Sync skipped (Last sync was ${Math.round((now - lastSync) / 60000)}m ago)`);
+      return;
+    }
+
     console.log(`[OfflineManager] Starting full sync for user: ${userId}`);
     
     try {
-      // 1. Check internet
+      // 2. Check internet
       const online = await this.isOnline();
       if (!online) {
         console.log('[OfflineManager] Offline, skipping full sync.');
@@ -338,6 +351,7 @@ export const OfflineManager = {
           }
         }
 
+        await this.saveData(lastSyncKey, now);
         console.log('[OfflineManager] Profile and Posts sync complete! ✓');
         
         // 5. Sync Messages (Instagram Approach)
