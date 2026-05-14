@@ -47,13 +47,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     };
     
     if (typeof window !== 'undefined') {
-      // 1. If looking at OWN profile, try to load self from instant cache
-      if (currentUserId && id === currentUserId) {
-        const cachedSelf = localStorage.getItem(`profile_cache_${currentUserId}`);
-        if (cachedSelf) return JSON.parse(cachedSelf);
-      }
+      // 1. Check for Sync Metadata Mirror (INSTANT)
+      const metaCache = localStorage.getItem(`pp_meta_${id}`);
+      if (metaCache) return JSON.parse(metaCache);
 
-      // 2. Check specific profile cache
+      // 2. Check specific profile cache (SQLite/Large)
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -97,6 +95,9 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [followersCount, setFollowersCount] = useState<number>(() => {
     if (initialData?.followCounts) return initialData.followCounts.followers;
     if (typeof window !== 'undefined') {
+      const meta = localStorage.getItem(`pp_meta_${id}`);
+      if (meta) return JSON.parse(meta).followersCount || 0;
+      
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -111,6 +112,9 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [followingCount, setFollowingCount] = useState<number>(() => {
     if (initialData?.followCounts) return initialData.followCounts.following;
     if (typeof window !== 'undefined') {
+      const meta = localStorage.getItem(`pp_meta_${id}`);
+      if (meta) return JSON.parse(meta).followingCount || 0;
+
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -166,6 +170,14 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
 
         setUser(userToSet);
         setUserPosts(postsToSet);
+        
+        // Mirror metadata for instant sync on next visit
+        localStorage.setItem(`pp_meta_${id}`, JSON.stringify({
+          ...userToSet,
+          followersCount: userToSet.followersCount || 0,
+          followingCount: userToSet.followingCount || 0
+        }));
+
         setIsLoading(false);
         cacheLoaded.current = true;
         return;
@@ -198,6 +210,14 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
             statusDisplay: freshData.statusDisplay || null
           };
           setUser(updatedUser);
+          // Mirror metadata for instant sync on next visit
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`pp_meta_${id}`, JSON.stringify({
+              ...updatedUser,
+              followersCount: freshData.followCounts?.followers || 0,
+              followingCount: freshData.followCounts?.following || 0
+            }));
+          }
           setUserPosts(freshData.posts || []);
           setIsFollowing(freshData.isFollowing || false);
           setFollowersCount(freshData.followCounts?.followers || 0);
