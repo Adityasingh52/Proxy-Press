@@ -79,6 +79,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [userPosts, setUserPosts] = useState<any[]>(() => {
     if (initialData?.posts) return initialData.posts;
     if (typeof window !== 'undefined') {
+      // 1. Try Sync Grid Mirror (INSTANT)
+      const gridCache = localStorage.getItem(`pp_grid_${id}`);
+      if (gridCache) return JSON.parse(gridCache);
+
+      // 2. Try Legacy Cache
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -171,12 +176,13 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
         setUser(userToSet);
         setUserPosts(postsToSet);
         
-        // Mirror metadata for instant sync on next visit
+        // Mirror metadata & top posts for instant sync on next visit
         localStorage.setItem(`pp_meta_${id}`, JSON.stringify({
           ...userToSet,
           followersCount: userToSet.followersCount || 0,
           followingCount: userToSet.followingCount || 0
         }));
+        localStorage.setItem(`pp_grid_${id}`, JSON.stringify(postsToSet.slice(0, 6))); // Cache top 6
 
         setIsLoading(false);
         cacheLoaded.current = true;
@@ -210,13 +216,17 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
             statusDisplay: freshData.statusDisplay || null
           };
           setUser(updatedUser);
-          // Mirror metadata for instant sync on next visit
+          // Mirror metadata & top posts for instant sync on next visit
           if (typeof window !== 'undefined') {
-            localStorage.setItem(`pp_meta_${id}`, JSON.stringify({
+            const metaObj = {
               ...updatedUser,
               followersCount: freshData.followCounts?.followers || 0,
               followingCount: freshData.followCounts?.following || 0
-            }));
+            };
+            localStorage.setItem(`pp_meta_${id}`, JSON.stringify(metaObj));
+            if (freshData.posts) {
+              localStorage.setItem(`pp_grid_${id}`, JSON.stringify(freshData.posts.slice(0, 6)));
+            }
           }
           setUserPosts(freshData.posts || []);
           setIsFollowing(freshData.isFollowing || false);
