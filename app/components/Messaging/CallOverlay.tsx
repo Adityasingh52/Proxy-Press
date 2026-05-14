@@ -58,7 +58,7 @@ export default function CallOverlay({
   };
 
   return (
-    <div className={`call-overlay ${status === 'ringing' ? 'ringing' : ''}`}>
+    <div className={`call-overlay ${status === 'ringing' ? 'ringing' : ''} ${status === 'connected' ? 'connected' : ''}`}>
       {/* Background Video (Connected State Only) */}
       {status === 'connected' && type === 'video' && (
         <div className="video-container">
