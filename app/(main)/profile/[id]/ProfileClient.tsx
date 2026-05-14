@@ -6,6 +6,7 @@ import '../profile.css';
 import Link from 'next/link';
 import { blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
+import { useIdentity } from '@/lib/IdentityContext';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -29,15 +30,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    if (initialData?.currentUserId) return initialData.currentUserId;
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('last_user_id') || 
-             localStorage.getItem('proxypress_viewer_id') || 
-             localStorage.getItem('pp_cache_last_user_id');
-    }
-    return null;
-  });
+  const { currentUserId } = useIdentity();
 
   const [user, setUser] = useState<any>(() => {
     if (initialData?.user) return {

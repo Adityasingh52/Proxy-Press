@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
+import { useIdentity } from '@/lib/IdentityContext';
 import './MobileBottomNav.css';
 
 const navItems = [
@@ -70,34 +71,11 @@ export default function MobileBottomNav() {
   const searchParams = useSearchParams();
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
-  
+  const { currentUserId } = useIdentity();
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('last_user_id') || localStorage.getItem('proxypress_viewer_id');
-    }
-    return null;
-  });
-
-  // Sync with localStorage AFTER mount to handle any external changes
   useEffect(() => {
-    const savedId = localStorage.getItem('last_user_id');
-    if (savedId && savedId !== currentUserId) {
-      setCurrentUserId(savedId);
-    }
-  }, [currentUserId]);
-
-  // 0. Instant Cache Load (Upgrade from native cache if available)
-  useEffect(() => {
-    async function loadInstantId() {
-      const cachedId = await OfflineManager.loadData<string>('last_user_id');
-      if (cachedId) {
-        setCurrentUserId(cachedId);
-        localStorage.setItem('last_user_id', cachedId);
-      }
-    }
-    loadInstantId();
-  }, []);
+    setOptimisticTab(null);
+  }, [pathname]);
 
   // 1. Static Prefetching (Run once to warm up the cache)
   useEffect(() => {

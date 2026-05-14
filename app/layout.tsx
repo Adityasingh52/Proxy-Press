@@ -36,6 +36,7 @@ export const metadata: Metadata = {
 };
 
 import { NotificationsProvider } from "@/lib/NotificationsContext";
+import { IdentityProvider } from "@/lib/IdentityContext";
 import PWAProvider from "@/lib/PWAProvider";
 
 export default function RootLayout({
@@ -80,9 +81,11 @@ export default function RootLayout({
       </head>
       <body suppressHydrationWarning>
         <PWAProvider>
-          <NotificationsProvider>
-            {children}
-          </NotificationsProvider>
+          <IdentityProvider>
+            <NotificationsProvider>
+              {children}
+            </NotificationsProvider>
+          </IdentityProvider>
         </PWAProvider>
       </body>
     </html>
