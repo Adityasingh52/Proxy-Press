@@ -109,8 +109,8 @@ export const OfflineManager = {
    * Add a message to the offline queue.
    * The message will be sent automatically when the device is back online.
    */
-  async queueMessage(messageData: Omit<PendingMessage, 'tempId' | 'queuedAt' | 'retryCount'>): Promise<string> {
-    const tempId = `offline_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  async queueMessage(messageData: Omit<PendingMessage, 'tempId' | 'queuedAt' | 'retryCount'> & { tempId?: string }): Promise<string> {
+    const tempId = messageData.tempId || `offline_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
     const pendingMsg: PendingMessage = {
       ...messageData,
