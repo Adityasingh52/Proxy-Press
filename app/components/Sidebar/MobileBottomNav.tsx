@@ -71,7 +71,7 @@ export default function MobileBottomNav() {
   const searchParams = useSearchParams();
   const [unreadCount, setUnreadCount] = useState(0);
   const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
-  const { currentUserId } = useIdentity();
+  const { currentUserId, refreshIdentity } = useIdentity();
 
   useEffect(() => {
     setOptimisticTab(null);
@@ -94,9 +94,8 @@ export default function MobileBottomNav() {
         const user = await actions.getCurrentUser();
         
         if (user) {
-          setCurrentUserId(user.id);
+          refreshIdentity();
           OfflineManager.saveData('last_user_id', user.id);
-          localStorage.setItem('last_user_id', user.id);
           
           const count = await actions.getUnreadMessageCountAction();
           setUnreadCount(count);

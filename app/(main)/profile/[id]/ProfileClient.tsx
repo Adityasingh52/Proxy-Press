@@ -30,7 +30,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
-  const { currentUserId } = useIdentity();
+  const { currentUserId, refreshIdentity } = useIdentity();
 
   const [user, setUser] = useState<any>(() => {
     if (initialData?.user) return {
@@ -227,12 +227,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           setFollowingCount(freshData.followCounts?.following || 0);
           
           if (freshData.currentUserId) {
-            setCurrentUserId(freshData.currentUserId);
+            refreshIdentity();
             OfflineManager.saveData('last_user_id', freshData.currentUserId);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('last_user_id', freshData.currentUserId);
-              localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
-            }
             
             // SYNC TO SQLITE if this is my profile
             if (id === freshData.currentUserId) {
