@@ -580,7 +580,7 @@ function MessagesContent() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [longPressMsg, setLongPressMsg] = useState<string | null>(null);
-  const [showFutureModal, setShowFutureModal] = useState(false);
+
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showMuteToast, setShowMuteToast] = useState(false);
@@ -2136,11 +2136,11 @@ function MessagesContent() {
               </svg>
               <span>Profile</span>
             </Link>
-            <button className="msg-info-action-btn" onClick={() => setShowFutureModal(true)}>
+            <button className="msg-info-action-btn" onClick={() => { startCall('voice'); setShowChatInfo(false); }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
               <span>Audio</span>
             </button>
-            <button className="msg-info-action-btn" onClick={() => setShowFutureModal(true)}>
+            <button className="msg-info-action-btn" onClick={() => { startCall('video'); setShowChatInfo(false); }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
               <span>Video</span>
             </button>
@@ -3513,35 +3513,7 @@ function MessagesContent() {
       {/* Create Story Modal */}
       {renderCreateStoryModal()}
 
-      {showFutureModal && (
-        <div className="msg-future-overlay" onClick={() => setShowFutureModal(false)}>
-          <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
-            <div className="msg-future-handle" />
-            <div className="msg-future-content">
-              <div className="msg-future-icon-wrapper">
-                <div className="msg-future-icon-glow" />
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  <path d="M12 8v4"/><path d="M12 16h.01"/>
-                </svg>
-              </div>
-              <h2 className="msg-future-title">Premium Feature</h2>
-              <p className="msg-future-desc">
-                We're currently scaling our infrastructure to support <strong>HD Voice & Video calls</strong>. This encrypted communication suite will be available in a future update.
-              </p>
-              <button 
-                className="msg-future-btn" 
-                onClick={() => setShowFutureModal(false)}
-              >
-                <span>Got it</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
       {showBlockConfirm && activeConversation && (
         <div className="msg-future-overlay" onClick={() => setShowBlockConfirm(false)}>
           <div className="msg-future-sheet" onClick={e => e.stopPropagation()}>
