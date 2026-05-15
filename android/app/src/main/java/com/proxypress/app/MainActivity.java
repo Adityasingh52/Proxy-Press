@@ -16,6 +16,14 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Guaranteed Space: Calculate status bar height and apply as padding
+        int resourceId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resourceId > 0) {
+            int statusBarHeight = getResources().getDimensionPixelSize(resourceId);
+            findViewById(android.R.id.content).setPadding(0, statusBarHeight, 0, 0);
+        }
+        
         showNativeSplash();
         
         // Delay the painting slightly to ensure the window is ready
@@ -88,12 +96,20 @@ public class MainActivity extends BridgeActivity {
             boolean isDark = true;
             
             if (customThemeJson != null) {
-                java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
-                if (bgMatcher.find()) bgColor = Color.parseColor(bgMatcher.group(1));
-                
-                // Estimate if the background is dark or light for icon contrast
-                double darkness = 1 - (0.299 * Color.red(bgColor) + 0.587 * Color.green(bgColor) + 0.114 * Color.blue(bgColor)) / 255;
-                isDark = darkness > 0.5;
+                try {
+                    // Robust Regex for 3, 6, or 8-digit hex codes
+                    java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]+)\"").matcher(customThemeJson);
+                    if (bgMatcher.find()) {
+                        String colorStr = bgMatcher.group(1);
+                        bgColor = Color.parseColor(colorStr);
+                    }
+                    
+                    // Estimate if the background is dark or light for icon contrast
+                    double darkness = 1 - (0.299 * Color.red(bgColor) + 0.587 * Color.green(bgColor) + 0.114 * Color.blue(bgColor)) / 255;
+                    isDark = darkness > 0.5;
+                } catch (Exception e) {
+                    // If parsing fails, stick to defaults
+                }
             } else {
                 // Check for light/dark mode preference
                 String themeMode = prefs.getString("proxy-press-theme", null);
@@ -120,23 +136,6 @@ public class MainActivity extends BridgeActivity {
                 
                 // 3. Paint the DecorView (the absolute root)
                 getWindow().getDecorView().setBackgroundColor(finalColor);
-
-                // 4. Update the Status Bar
-                getWindow().setStatusBarColor(finalColor);
-                
-                // Update Status Bar icon brightness
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                    android.view.View decorView = getWindow().getDecorView();
-                    int flags = decorView.getSystemUiVisibility();
-                    if (finalIsDark) {
-                        // Dark mode background -> White icons
-                        flags &= ~android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                    } else {
-                        // Light mode background -> Dark icons
-                        flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                    }
-                    decorView.setSystemUiVisibility(flags);
-                }
             });
         } catch (Exception e) {}
     }

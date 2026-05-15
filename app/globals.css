@@ -37,7 +37,8 @@ html, body {
   min-height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-top: var(--safe-area-inset-top);
+  /* Use safe area if available, but always keep at least 44px for safety to clear the status bar */
+  padding-top: max(var(--safe-area-inset-top), 44px);
   padding-bottom: calc(var(--safe-area-inset-bottom) + 80px); /* Extra space for bottom nav */
 }
 

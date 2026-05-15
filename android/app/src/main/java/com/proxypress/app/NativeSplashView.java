@@ -37,11 +37,15 @@ public class NativeSplashView extends View {
             if (customThemeJson == null) customThemeJson = prefs.getString("_cap_proxy-press-custom-theme", null);
             
             if (customThemeJson != null) {
-                java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
-                if (bgMatcher.find()) bgColor = Color.parseColor(bgMatcher.group(1));
-                
-                java.util.regex.Matcher primaryMatcher = java.util.regex.Pattern.compile("\"primary\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
-                if (primaryMatcher.find()) primaryColor = Color.parseColor(primaryMatcher.group(1));
+                try {
+                    java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]+)\"").matcher(customThemeJson);
+                    if (bgMatcher.find()) bgColor = Color.parseColor(bgMatcher.group(1));
+                    
+                    java.util.regex.Matcher primaryMatcher = java.util.regex.Pattern.compile("\"primary\":\"(#[A-Fa-f0-9]+)\"").matcher(customThemeJson);
+                    if (primaryMatcher.find()) primaryColor = Color.parseColor(primaryMatcher.group(1));
+                } catch (Exception e) {
+                    // Fallback to defaults on parsing error
+                }
             } else {
                 // Check for light/dark mode preference
                 String themeMode = prefs.getString("proxy-press-theme", null);
