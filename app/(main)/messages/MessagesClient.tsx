@@ -28,6 +28,7 @@ import {
   deleteMessage as dbDeleteMessage
 } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
+import { supabase } from '@/lib/supabase';
 
 /* ─────────── TYPES ─────────── */
 interface User {
@@ -390,22 +391,25 @@ function MessagesContent() {
     loadInitialData();
   }, []);
 
-  // Polling for real-time conversation and message updates
+  // Real-time updates via Supabase Realtime (Replaces Polling)
   useEffect(() => {
     if (!currentUserId || currentUserId === 'me') return;
 
-    const pollInterval = setInterval(async () => {
-      try {
+    // Listen for new messages across all conversations the user is part of
+    const channel = supabase
+      .channel('messages-realtime')
+      .on('postgres_changes', {
+        event: '*', // Listen to INSERT, UPDATE, DELETE
+        schema: 'public',
+        table: 'messages'
+      }, async (payload) => {
+        console.log('[Realtime] Message change detected:', payload);
+        
+        // Trigger a conversation refresh to get latest state (unread counts, last message, etc.)
         const convs = await getConversations(currentUserId);
-        if (convs && convs.length > 0) {
+        if (convs) {
           setConversations(prev => {
-            // Preservation logic: maintain local state for messages being sent
-            const localMsgMap = new Map();
-            prev.forEach(c => c.messages.forEach(m => {
-              if (String(m.id).startsWith('m')) localMsgMap.set(m.id, m);
-            }));
-
-            const newMappedConvs = convs.map((dbConv: any) => {
+            const mappedConvs = convs.map((dbConv: any) => {
               const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== currentUserId);
               const otherUser = otherParticipant?.user;
               
@@ -413,6 +417,10 @@ function MessagesContent() {
                 ? (otherUser.username || 'User') 
                 : (otherUser?.name || 'Unknown User');
 
+              // Preserve messages for conversations that haven't changed to avoid unnecessary re-renders
+              const existing = prev.find(p => p.id === dbConv.id);
+              const isMsgChange = payload.table === 'messages' && (payload.new as any)?.conversationId === dbConv.id;
+              
               return {
                 id: dbConv.id,
                 user: {
@@ -420,74 +428,36 @@ function MessagesContent() {
                   name: displayName,
                   avatar: otherUser?.avatar || (displayName ? displayName.substring(0, 1) : 'U'),
                   profilePicture: otherUser?.profilePicture,
-                  online: true, // Simplified for now
+                  online: true,
                 },
-
                 lastMessage: dbConv.lastMessage || '',
                 lastMessageTime: formatMessageTime(dbConv.lastMessageTime) || '',
-                rawLastMessageTime: dbConv.lastMessageTime || '', // Store raw for sorting
+                rawLastMessageTime: dbConv.lastMessageTime || '',
                 unreadCount: dbConv.unreadCount || 0,
                 isTyping: false,
                 muted: dbConv.muted || false,
                 vanishMode: dbConv.vanishMode || false,
                 vanishDuration: dbConv.vanishDuration || 3600,
-                messages: (dbConv.messages || []).map((m: any) => {
-                  const localMsg = localMsgMap.get(m.id);
-                  return {
-                    id: m.id,
-                    senderId: m.senderId === currentUserId ? 'me' : m.senderId,
-                    text: m.text,
-                    timestamp: formatMessageTime(m.timestamp),
-                    seen: m.seen,
-                    type: m.type || 'text',
-                    attachment: m.attachment,
-                    status: localMsg?.status || 'sent',
-                    expiresAt: m.expiresAt ? new Date(m.expiresAt).getTime() : undefined,
-                    isEdited: m.isEdited,
-                    isDeleted: m.isDeleted,
-                    replyTo: m.replyTo,
-                  };
-                }).reverse(),
+                // If this is the chat where the message happened, trigger message list refresh
+                messages: existing?.messages || [],
+                historyLoaded: isMsgChange ? false : (existing?.historyLoaded || false)
               };
             });
 
-            // Always update state if we have new data to ensure correct sorting and order
-            const newDrafts = prev.filter(c => String(c.id).startsWith('new_'));
-            
-            const merged = [...newDrafts, ...newMappedConvs].map(newC => {
-              const existing = prev.find(p => p.id === newC.id);
-              
-              // If the last message time changed, we need to refresh messages.
-              // This should track ALL conversations, not just the active one.
-              const isChanged = existing && newC.rawLastMessageTime !== existing.rawLastMessageTime;
-              const isActive = newC.id === activeChat;
+            // If the change happened in the ACTIVE chat, trigger a re-fetch of messages
+            if (activeChat && (payload.new as any)?.conversationId === activeChat) {
+              setActiveChatVersion(v => v + 1);
+            }
 
-              if (isChanged && isActive) {
-                // Trigger a re-fetch of messages for the active chat
-                setTimeout(() => setActiveChatVersion(v => v + 1), 0);
-              }
-
-              return {
-                ...newC,
-                // If it's the active chat and it changed, clear messages to trigger re-fetch.
-                // If it's NOT active but changed, set historyLoaded to false so it re-fetches when opened.
-                messages: (isChanged && isActive) ? [] : (existing?.messages || []),
-                historyLoaded: isChanged ? false : (existing?.historyLoaded || false)
-              };
-            });
-
-            // Update cache during polling too
-            OfflineManager.saveData(`convs_${currentUserId}`, merged);
-
-            return merged;
+            return mappedConvs;
           });
         }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 10000); // 10 seconds for better performance and to prevent server saturation
+      })
+      .subscribe();
 
-    return () => clearInterval(pollInterval);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [currentUserId, activeChat]);
 
   // Handle userId or chatId from URL reactively
