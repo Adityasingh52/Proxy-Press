@@ -107,9 +107,9 @@ export default function ThemeSettingsPage() {
   };
 
   const updateStatusBar = (isDark: boolean, color: string) => {
-    import('@capacitor/status-bar').then(({ StatusBar }) => {
+    import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
       StatusBar.setBackgroundColor({ color: color });
-      StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' });
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
     }).catch(() => {});
   };
 
