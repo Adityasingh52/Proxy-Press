@@ -54,6 +54,7 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
             try {
+              document.documentElement.classList.add('theme-loading');
               const theme = localStorage.getItem('proxy-press-theme');
               const customTheme = localStorage.getItem('proxy-press-custom-theme');
               const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -75,11 +76,11 @@ export default function RootLayout({
                   if (colors.bg) bgColor = colors.bg;
                   
                   Object.entries(colors).forEach(([key, value]) => {
-                    document.documentElement.style.setProperty('--' + key, value as string);
+                    document.documentElement.style.setProperty('--' + key, value);
                     if (key === 'primary') {
-                      const r = parseInt((value as string).slice(1, 3), 16);
-                      const g = parseInt((value as string).slice(3, 5), 16);
-                      const b = parseInt((value as string).slice(5, 7), 16);
+                      const r = parseInt(value.slice(1, 3), 16);
+                      const g = parseInt(value.slice(3, 5), 16);
+                      const b = parseInt(value.slice(5, 7), 16);
                       document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
                     }
                   });
@@ -91,8 +92,14 @@ export default function RootLayout({
               
               // Create a style element to lock the background color
               const style = document.createElement('style');
+              style.id = 'theme-lock-style';
               style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
               document.head.appendChild(style);
+
+              // Cleanup loading class
+              setTimeout(function() {
+                document.documentElement.classList.remove('theme-loading');
+              }, 500);
             } catch (e) {}
           })();
         `}} />

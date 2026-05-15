@@ -146,6 +146,12 @@ body {
   transition: background-color var(--transition-slow), color var(--transition-slow);
 }
 
+/* Prevent transitions during initial theme application to avoid flicker */
+.theme-loading,
+.theme-loading * {
+  transition: none !important;
+}
+
 /* ─────────────────────────────────────────
    SCROLLBAR
 ───────────────────────────────────────── */
