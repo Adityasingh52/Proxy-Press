@@ -19,7 +19,7 @@ public class NativeSplashView extends View {
     private List<Ripple> ripples = new ArrayList<>();
     private List<Line> lines = new ArrayList<>();
     private int primaryColor = Color.parseColor("#2563EB");
-    private int bgColor = Color.parseColor("#0F172A");
+    private int bgColor = Color.parseColor("#000000");
     private String logoText = "Proxy-Press";
 
     public NativeSplashView(Context context) {
@@ -31,7 +31,10 @@ public class NativeSplashView extends View {
     private void loadThemeColors(Context context) {
         try {
             android.content.SharedPreferences prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
+            
+            // Check for custom theme first (try both prefixed and non-prefixed)
             String customThemeJson = prefs.getString("proxy-press-custom-theme", null);
+            if (customThemeJson == null) customThemeJson = prefs.getString("_cap_proxy-press-custom-theme", null);
             
             if (customThemeJson != null) {
                 java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
@@ -40,12 +43,25 @@ public class NativeSplashView extends View {
                 java.util.regex.Matcher primaryMatcher = java.util.regex.Pattern.compile("\"primary\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
                 if (primaryMatcher.find()) primaryColor = Color.parseColor(primaryMatcher.group(1));
             } else {
-                String themeMode = prefs.getString("proxy-press-theme", "dark");
-                boolean isDark = !"light".equals(themeMode);
-                bgColor = isDark ? Color.parseColor("#0F172A") : Color.parseColor("#F8FAFC");
+                // Check for light/dark mode preference
+                String themeMode = prefs.getString("proxy-press-theme", null);
+                if (themeMode == null) themeMode = prefs.getString("_cap_proxy-press-theme", "system");
+                
+                boolean isDark;
+                if ("system".equals(themeMode)) {
+                    isDark = (context.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+                } else {
+                    isDark = "dark".equals(themeMode);
+                }
+                
+                bgColor = isDark ? Color.parseColor("#000000") : Color.parseColor("#F8FAFC");
                 primaryColor = isDark ? Color.parseColor("#3B82F6") : Color.parseColor("#2563EB");
             }
-        } catch (Exception e) {}
+        } catch (Exception e) {
+            // Fallback to system-based defaults if anything goes wrong
+            boolean isDark = (context.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            bgColor = isDark ? Color.parseColor("#000000") : Color.parseColor("#F8FAFC");
+        }
     }
 
     private void init() {
