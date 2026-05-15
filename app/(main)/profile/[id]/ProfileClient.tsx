@@ -30,7 +30,7 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
-  const { currentUserId, refreshIdentity } = useIdentity();
+  const { currentUserId, refreshIdentity, isLoading: isIdentityLoading } = useIdentity();
 
   const [user, setUser] = useState<any>(() => {
     if (initialData?.user) return {
@@ -250,7 +250,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
           
           setIsLoading(false);
         } else {
-          setIsLoading(false);
+          // If freshData is null (e.g. 404), only then stop loading if we don't have cached user
+          if (!user) setIsLoading(false);
         }
       } catch (err) {
         console.error("Background refresh failed", err);
@@ -618,7 +619,9 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
             </div>
           </div>
 
-          {isMe ? (
+          {isIdentityLoading ? (
+            <div style={{ width: '40px' }} /> 
+          ) : isMe ? (
             <Link 
               href="/settings" 
               className="ig-header-settings-btn" 

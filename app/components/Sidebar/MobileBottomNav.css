@@ -120,7 +120,8 @@
   }
 
   body.camera-active .mobile-bottom-nav,
-  body.story-create-active .mobile-bottom-nav {
+  body.story-create-active .mobile-bottom-nav,
+  body.calling-active .mobile-bottom-nav {
     display: none !important;
   }
 }

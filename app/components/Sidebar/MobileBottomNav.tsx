@@ -83,6 +83,7 @@ export default function MobileBottomNav() {
     router.prefetch('/explore');
     router.prefetch('/create');
     router.prefetch('/messages');
+    router.prefetch('/settings');
     if (currentUserId) router.prefetch(`/profile/${currentUserId}`);
   }, [router, currentUserId]);
 
@@ -126,9 +127,11 @@ export default function MobileBottomNav() {
   const isMessages = pathname.startsWith('/messages');
   const isSettings = pathname.startsWith('/settings') || pathname.startsWith('/profile/settings');
   const isEditProfile = pathname.startsWith('/profile/edit');
+  const isAdmin = pathname.startsWith('/admin');
+  const isCalling = searchParams.get('calling') === 'true';
   
-  // Hide footer if we are inside a story view (anywhere), inside a specific chat, or on settings/edit profile
-  const shouldHide = isStory || (isMessages && (chatId || userId)) || isSettings || isEditProfile;
+  // Hide footer if we are inside a story view, a call, a specific chat, or on settings/admin
+  const shouldHide = isStory || isCalling || (isMessages && (chatId || userId)) || isSettings || isEditProfile || isAdmin;
 
   if (shouldHide) return null;
 
@@ -149,7 +152,7 @@ export default function MobileBottomNav() {
             ? item.href === optimisticTab
             : (item.href === '/' 
               ? pathname === '/' 
-              : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/')));
+              : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/') && !pathname.includes('/settings')));
 
           const badge = item.href === '/messages' ? unreadCount : 0;
           

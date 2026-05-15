@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { logout, submitFeedback, getCurrentUser } from '@/lib/actions';
+import { useIdentity } from '@/lib/IdentityContext';
 import { Suspense } from 'react';
 import './settings.css';
 
@@ -17,6 +18,7 @@ export default function SettingsPage() {
 
 function SettingsContent() {
   const router = useRouter();
+  const { currentUserId } = useIdentity();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [feedbackType, setFeedbackType] = useState('Suggestion');
@@ -191,7 +193,7 @@ function SettingsContent() {
     <div className="settings-container">
       <div className="settings-header">
         <Link 
-          href={user?.id ? `/profile/${user.id}` : '/profile'} 
+          href={currentUserId ? `/profile/${currentUserId}` : '/profile'} 
           className="settings-back-btn"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

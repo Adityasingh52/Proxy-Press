@@ -629,6 +629,30 @@ function MessagesContent() {
     channelName?: string;
   } | null>(null);
 
+  // Sync calling state to URL for global UI awareness (like hiding footer)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (activeCall) {
+      params.set('calling', 'true');
+    } else {
+      params.delete('calling');
+    }
+    const newSearch = params.toString();
+    const newUrl = `${window.location.pathname}${newSearch ? '?' + newSearch : ''}`;
+    window.history.replaceState(null, '', newUrl);
+
+    // Also use body class for instant CSS-based hiding of footer
+    if (activeCall) {
+      document.body.classList.add('calling-active');
+    } else {
+      document.body.classList.remove('calling-active');
+    }
+
+    return () => {
+      document.body.classList.remove('calling-active');
+    };
+  }, [activeCall]);
+
   /* ─── Calling Logic (Agora & Pusher) ─── */
   const agoraClient = useRef<any>(null);
   const localTracks = useRef<any[]>([]);

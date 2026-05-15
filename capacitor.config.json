@@ -1,6 +1,6 @@
 {
   "appId": "com.proxypress.app",
-  "appName": "Proxy-Press",
+  "appName": "Proxy Press",
   "webDir": "out",
   "server": {
     "url": "https://proxy-press-omega.vercel.app",
