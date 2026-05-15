@@ -65,30 +65,44 @@ export default function RootLayout({
                 document.documentElement.classList.remove('dark');
               }
 
-              // Set initial background to prevent white flash
+              // Default backgrounds
               let bgColor = isDark ? '#0F172A' : '#F8FAFC';
 
+              // Override with custom theme if present
               if (customTheme) {
-                const colors = JSON.parse(customTheme);
-                Object.entries(colors).forEach(([key, value]) => {
-                  document.documentElement.style.setProperty('--' + key, value as string);
-                  if (key === 'bg') bgColor = value as string;
-                  if (key === 'primary') {
-                    const r = parseInt((value as string).slice(1, 3), 16);
-                    const g = parseInt((value as string).slice(3, 5), 16);
-                    const b = parseInt((value as string).slice(5, 7), 16);
-                    document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
-                  }
-                });
+                try {
+                  const colors = JSON.parse(customTheme);
+                  if (colors.bg) bgColor = colors.bg;
+                  
+                  Object.entries(colors).forEach(([key, value]) => {
+                    document.documentElement.style.setProperty('--' + key, value as string);
+                    if (key === 'primary') {
+                      const r = parseInt((value as string).slice(1, 3), 16);
+                      const g = parseInt((value as string).slice(3, 5), 16);
+                      const b = parseInt((value as string).slice(5, 7), 16);
+                      document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
+                    }
+                  });
+                } catch (e) {}
               }
               
+              // Apply the chosen background color to the root immediately
               document.documentElement.style.backgroundColor = bgColor;
+              
+              // Create a style element to lock the background color
+              const style = document.createElement('style');
+              style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
+              document.head.appendChild(style);
             } catch (e) {}
           })();
         `}} />
         <style dangerouslySetInnerHTML={{ __html: `
-          html, body { background-color: #F8FAFC; }
-          html.dark, html.dark body { background-color: #0F172A; }
+          :root { color-scheme: light; }
+          :root.dark { color-scheme: dark; }
+          html, body { 
+            margin: 0; 
+            padding: 0; 
+          }
         `}} />
       </head>
       <body suppressHydrationWarning>

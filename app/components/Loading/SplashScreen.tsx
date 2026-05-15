@@ -1,14 +1,51 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { SplashScreen as NativeSplash } from '@capacitor/splash-screen';
 import './SplashScreen.css';
 
 export default function SplashScreen() {
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
-    // We wait for hydration then trigger the fade out
-    // A small delay ensures the user sees the beautiful animation
+    // Hide native splash screen as soon as web splash is ready
+    const hideNative = async () => {
+      let attempts = 0;
+      const maxAttempts = 20; // Try for 4 seconds (20 * 200ms)
+
+      const interval = setInterval(async () => {
+        try {
+          attempts++;
+          let success = false;
+
+          // First try the custom Java interface for Pure Native experience
+          if ((window as any).AndroidNativeSplash) {
+            console.log('[Splash] Found AndroidNativeSplash, hiding...');
+            (window as any).AndroidNativeSplash.hide();
+            success = true;
+          } else if ((window as any).NativeSplash) {
+            // Check for old name just in case
+            (window as any).NativeSplash.hide();
+            success = true;
+          } else {
+            // Fallback for standard Capacitor splash plugin
+            console.log('[Splash] Using standard Capacitor splash fallback');
+            await NativeSplash.hide();
+            success = true;
+          }
+
+          if (success || attempts >= maxAttempts) {
+            clearInterval(interval);
+          }
+        } catch (e) {
+          if (attempts >= maxAttempts) clearInterval(interval);
+        }
+      }, 200);
+    };
+    
+    hideNative();
+
+    // After 2 seconds, fade out the web splash
     const timer = setTimeout(() => {
       setIsVisible(false);
     }, 2000);
