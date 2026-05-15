@@ -57,27 +57,38 @@ export default function RootLayout({
               const theme = localStorage.getItem('proxy-press-theme');
               const customTheme = localStorage.getItem('proxy-press-custom-theme');
               const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+              const isDark = theme === 'dark' || (!theme && prefersDark);
               
-              if (theme === 'dark' || (!theme && prefersDark)) {
+              if (isDark) {
                 document.documentElement.classList.add('dark');
               } else {
                 document.documentElement.classList.remove('dark');
               }
 
+              // Set initial background to prevent white flash
+              let bgColor = isDark ? '#0F172A' : '#F8FAFC';
+
               if (customTheme) {
                 const colors = JSON.parse(customTheme);
                 Object.entries(colors).forEach(([key, value]) => {
-                  document.documentElement.style.setProperty('--' + key, value);
+                  document.documentElement.style.setProperty('--' + key, value as string);
+                  if (key === 'bg') bgColor = value as string;
                   if (key === 'primary') {
-                    const r = parseInt(value.slice(1, 3), 16);
-                    const g = parseInt(value.slice(3, 5), 16);
-                    const b = parseInt(value.slice(5, 7), 16);
+                    const r = parseInt((value as string).slice(1, 3), 16);
+                    const g = parseInt((value as string).slice(3, 5), 16);
+                    const b = parseInt((value as string).slice(5, 7), 16);
                     document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
                   }
                 });
               }
+              
+              document.documentElement.style.backgroundColor = bgColor;
             } catch (e) {}
           })();
+        `}} />
+        <style dangerouslySetInnerHTML={{ __html: `
+          html, body { background-color: #F8FAFC; }
+          html.dark, html.dark body { background-color: #0F172A; }
         `}} />
       </head>
       <body suppressHydrationWarning>
