@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
 import { OfflineManager } from '@/lib/offline-manager';
 import { useIdentity } from '@/lib/IdentityContext';
+import { supabase } from '@/lib/supabase';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -274,6 +275,88 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
       });
     }
   }, [user, userPosts, id, isFollowing, followersCount, followingCount]);
+  
+  // ─── Supabase Real-time Updates ───
+  useEffect(() => {
+    if (!id) return;
+
+    // 1. Listen for Follower Updates
+    const channel = supabase
+      .channel(`profile-realtime-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follows',
+          filter: `followingId=eq.${id}`
+        },
+        (payload) => {
+          const isOurFollow = (payload.new as any)?.followerId === currentUserId || (payload.old as any)?.followerId === currentUserId;
+          
+          if (payload.eventType === 'INSERT') {
+            setFollowersCount(prev => prev + 1);
+            if (isOurFollow) setIsFollowing(true);
+          } else if (payload.eventType === 'DELETE') {
+            setFollowersCount(prev => prev - 1);
+            if (isOurFollow) setIsFollowing(false);
+          }
+        }
+      )
+      // 2. Listen for Post Like Updates
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'post_likes'
+        },
+        (payload) => {
+          const targetPostId = (payload.new as any)?.postId || (payload.old as any)?.postId;
+          if (targetPostId) {
+            setUserPosts(prev => prev.map(post => {
+              if (post.id === targetPostId) {
+                const currentLikes = typeof post.likes === 'number' ? post.likes : 0;
+                return { 
+                  ...post, 
+                  likes: payload.eventType === 'INSERT' ? currentLikes + 1 : Math.max(0, currentLikes - 1) 
+                };
+              }
+              return post;
+            }));
+          }
+        }
+      )
+      // 3. Listen for Follow Request Updates (Self -> Target)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests'
+        },
+        (payload) => {
+          // If we are the one who sent the request (or it involves us)
+          const isOurRequest = (payload.new as any)?.followerId === currentUserId || (payload.old as any)?.followerId === currentUserId;
+          const involvesThisProfile = (payload.new as any)?.followingId === id || (payload.old as any)?.followingId === id;
+          
+          if (isOurRequest && involvesThisProfile) {
+            if (payload.eventType === 'INSERT') {
+              setIsRequested(true);
+            } else if (payload.eventType === 'DELETE') {
+              setIsRequested(false);
+              // Note: If accepted, the 'follows' listener above will catch the INSERT 
+              // and set isFollowing(true) and update the count.
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
 
 
   // Options menu state

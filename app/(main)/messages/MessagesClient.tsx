@@ -177,6 +177,9 @@ function MessagesContent() {
   const [isOnline, setIsOnline] = useState(true);
   const [pendingCount, setPendingCount] = useState(0);
   const [activeChatVersion, setActiveChatVersion] = useState(0);
+  const [onlineUserIds, setOnlineUserIds] = useState<Set<string>>(new Set());
+  const pusherRef = useRef<any>(null);
+  const typingTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
   /* ─── Offline Manager Init ─── */
   useEffect(() => {
@@ -627,24 +630,47 @@ function MessagesContent() {
   const agoraClient = useRef<any>(null);
   const localTracks = useRef<any[]>([]);
 
+  /* ─── Presence & Messaging Signaling (Pusher) ─── */
   useEffect(() => {
     if (!currentUserId || currentUserId === 'me') return;
 
     let pusher: any;
-    let channel: any;
+    let userChannel: any;
+    let presenceChannel: any;
 
-    async function setupSignaling() {
-      const Pusher = (await import('pusher-js')).default;
-      pusher = new Pusher(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
+    async function setupPusher() {
+      const PusherClient = (await import('pusher-js')).default;
+      pusher = new PusherClient(process.env.NEXT_PUBLIC_PUSHER_KEY!, {
         cluster: process.env.NEXT_PUBLIC_PUSHER_CLUSTER!,
         authEndpoint: '/api/pusher/auth',
       });
+      pusherRef.current = pusher;
 
-      channel = pusher.subscribe(`private-user-${currentUserId}`);
+      // 1. Presence Channel (Global Messenger Status)
+      presenceChannel = pusher.subscribe('presence-messenger');
       
-      channel.bind('incoming-call', (data: any) => {
+      presenceChannel.bind('pusher:subscription_succeeded', (members: any) => {
+        setOnlineUserIds(new Set(Object.keys(members.members)));
+      });
+      
+      presenceChannel.bind('pusher:member_added', (member: any) => {
+        setOnlineUserIds(prev => new Set(prev).add(member.id));
+      });
+      
+      presenceChannel.bind('pusher:member_removed', (member: any) => {
+        setOnlineUserIds(prev => {
+          const next = new Set(prev);
+          next.delete(member.id);
+          return next;
+        });
+      });
+
+      // 2. User Private Channel (For Incoming Calls & Personal Signaling)
+      userChannel = pusher.subscribe(`private-user-${currentUserId}`);
+      
+      userChannel.bind('incoming-call', (data: any) => {
         setActiveCall(prev => {
-          if (prev) return prev; // Ignore if already in a call
+          if (prev) return prev; 
           return {
             type: data.type,
             mode: 'incoming',
@@ -654,31 +680,59 @@ function MessagesContent() {
         });
       });
 
-      channel.bind('call-accepted', () => {
-        setActiveCall(prev => {
-          if (prev && prev.mode === 'outgoing') {
-            return { ...prev, mode: 'connected' };
-          }
-          return prev;
-        });
+      userChannel.bind('call-accepted', () => {
+        setActiveCall(prev => (prev?.mode === 'outgoing' ? { ...prev, mode: 'connected' } : prev));
       });
 
-      channel.bind('call-rejected', () => {
-        setActiveCall(null);
-      });
-
-      channel.bind('call-ended', () => {
-        handleEndCall();
-      });
+      userChannel.bind('call-rejected', () => setActiveCall(null));
+      userChannel.bind('call-ended', () => handleEndCall());
     }
 
-    setupSignaling();
+    setupPusher();
 
     return () => {
-      if (channel) channel.unbind_all();
       if (pusher) pusher.disconnect();
     };
   }, [currentUserId]);
+
+  // ─── Active Chat Signaling (Typing & Specific signaling) ───
+  useEffect(() => {
+    if (!activeChat || !pusherRef.current || String(activeChat).startsWith('new_')) return;
+
+    const chatChannel = pusherRef.current.subscribe(`private-chat-${activeChat}`);
+
+    chatChannel.bind('client-typing', (data: { userId: string }) => {
+      // Update specific conversation isTyping state
+      setConversations(prev => prev.map(c => 
+        c.user.id === data.userId ? { ...c, isTyping: true } : c
+      ));
+
+      // Auto-clear typing indicator after 3 seconds
+      if (typingTimeouts.current[data.userId]) {
+        clearTimeout(typingTimeouts.current[data.userId]);
+      }
+      typingTimeouts.current[data.userId] = setTimeout(() => {
+        setConversations(prev => prev.map(c => 
+          c.user.id === data.userId ? { ...c, isTyping: false } : c
+        ));
+      }, 3000);
+    });
+
+    return () => {
+      chatChannel.unbind_all();
+      pusherRef.current.unsubscribe(`private-chat-${activeChat}`);
+    };
+  }, [activeChat]);
+
+  const sendTypingSignal = useCallback(() => {
+    if (!activeChat || !pusherRef.current || String(activeChat).startsWith('new_')) return;
+    try {
+      const chatChannel = pusherRef.current.channel(`private-chat-${activeChat}`);
+      if (chatChannel) {
+        chatChannel.trigger('client-typing', { userId: currentUserId });
+      }
+    } catch (e) {}
+  }, [activeChat, currentUserId]);
 
   const [lightboxControlsVisible, setLightboxControlsVisible] = useState(true);
   const [lightboxRotation, setLightboxRotation] = useState(0);
@@ -2126,7 +2180,7 @@ function MessagesContent() {
                 </div>
               </div>
               <h2 className="msg-info-name">{user.name}</h2>
-              <span className="msg-info-status">{user.online ? 'Active now' : `Last seen ${user.lastSeen || 'recently'}`}</span>
+              <span className="msg-info-status">{onlineUserIds.has(user.id) ? 'Active now' : `Offline`}</span>
             </Link>
           <div className="msg-info-actions">
             <Link href={`/profile/${user.id}`} className="msg-info-action-btn" style={{ textDecoration: 'none' }}>
@@ -2298,12 +2352,12 @@ function MessagesContent() {
             onClick={() => router.push(`/messages?chatId=${conv.id}`, { scroll: false })}
           >
             <div className="msg-conv-avatar-wrapper">
-              <div className={`msg-conv-avatar ${conv.user.online ? 'online' : ''}`}>
+              <div className={`msg-conv-avatar ${onlineUserIds.has(conv.user.id) ? 'online' : ''}`}>
                 {conv.user.profilePicture ? (
                   <img src={conv.user.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} />
                 ) : conv.user.avatar}
               </div>
-              {conv.user.online && <span className="msg-conv-online-dot" />}
+              {onlineUserIds.has(conv.user.id) && <span className="msg-conv-online-dot" />}
             </div>
             <div className="msg-conv-content">
               <div className="msg-conv-top">
@@ -2481,7 +2535,7 @@ function MessagesContent() {
                   <span className="msg-chat-header-status">
                     {activeConversation.isTyping ? (
                       <span className="msg-typing-indicator">typing<span className="msg-typing-dots"><span>.</span><span>.</span><span>.</span></span></span>
-                    ) : user.online ? 'Active now' : `${user.lastSeen || 'Offline'}`}
+                    ) : onlineUserIds.has(user.id) ? 'Active now' : 'Offline'}
                   </span>
                 </div>
               </div>
@@ -2879,7 +2933,10 @@ function MessagesContent() {
                     className="msg-text-input"
                     placeholder="Message..."
                     value={messageInput}
-                    onChange={e => setMessageInput(e.target.value)}
+                    onChange={e => {
+                      setMessageInput(e.target.value);
+                      sendTypingSignal();
+                    }}
                     onKeyDown={handleKeyDown}
                   />
                   <button
