@@ -6,10 +6,7 @@ import android.graphics.Color;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
-import android.os.Handler;
 import android.view.View;
-import android.view.animation.AccelerateDecelerateInterpolator;
-import android.view.animation.Interpolator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +16,6 @@ public class NativeSplashView extends View {
     private Paint textPaint;
     private Paint linePaint;
     private long startTime;
-    private int width, height;
     private List<Ripple> ripples = new ArrayList<>();
     private List<Line> lines = new ArrayList<>();
     private int primaryColor = Color.parseColor("#2563EB");
@@ -34,143 +30,95 @@ public class NativeSplashView extends View {
 
     private void loadThemeColors(Context context) {
         try {
-            // Capacitor Preferences saves data in a SharedPreferences file named "CapacitorStorage"
             android.content.SharedPreferences prefs = context.getSharedPreferences("CapacitorStorage", Context.MODE_PRIVATE);
             String customThemeJson = prefs.getString("proxy-press-custom-theme", null);
             
             if (customThemeJson != null) {
-                // We use a simple regex to extract colors to avoid adding a heavy JSON library dependency
                 java.util.regex.Matcher bgMatcher = java.util.regex.Pattern.compile("\"bg\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
-                if (bgMatcher.find()) {
-                    bgColor = Color.parseColor(bgMatcher.group(1));
-                }
+                if (bgMatcher.find()) bgColor = Color.parseColor(bgMatcher.group(1));
                 
                 java.util.regex.Matcher primaryMatcher = java.util.regex.Pattern.compile("\"primary\":\"(#[A-Fa-f0-9]{6})\"").matcher(customThemeJson);
-                if (primaryMatcher.find()) {
-                    primaryColor = Color.parseColor(primaryMatcher.group(1));
-                }
+                if (primaryMatcher.find()) primaryColor = Color.parseColor(primaryMatcher.group(1));
             } else {
-                // If no custom theme, check the dark/light mode preference
-                String themeMode = prefs.getString("proxy-press-theme", "system");
-                boolean isDark = themeMode.equals("dark") || 
-                                (themeMode.equals("system") && (context.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES);
-                
+                String themeMode = prefs.getString("proxy-press-theme", "dark");
+                boolean isDark = !"light".equals(themeMode);
                 bgColor = isDark ? Color.parseColor("#0F172A") : Color.parseColor("#F8FAFC");
                 primaryColor = isDark ? Color.parseColor("#3B82F6") : Color.parseColor("#2563EB");
             }
-        } catch (Exception e) {
-            // Fallback to defaults on any error
-        }
+        } catch (Exception e) {}
     }
 
     private void init() {
         ripplePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         ripplePaint.setStyle(Paint.Style.STROKE);
-        ripplePaint.setStrokeWidth(4f);
-        ripplePaint.setColor(primaryColor);
+        ripplePaint.setStrokeWidth(18f); // Even bolder for high-impact visual
 
         textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         textPaint.setTextAlign(Paint.Align.CENTER);
-        textPaint.setTextSize(100f);
+        textPaint.setTextSize(110f);
         textPaint.setFakeBoldText(true);
-        textPaint.setColor(Color.WHITE);
 
         linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         linePaint.setStrokeWidth(2f);
 
         startTime = System.currentTimeMillis();
 
-        // Initialize Ripples
-        for (int i = 0; i < 4; i++) {
-            ripples.add(new Ripple(i * 750));
-        }
-
-        // Initialize News Lines
-        for (int i = 0; i < 4; i++) {
-            lines.add(new Line(0.2f + (i * 0.2f), 4000 + (i * 1000), i * 500));
-        }
-
-        postInvalidateOnAnimation();
+        for (int i = 0; i < 4; i++) ripples.add(new Ripple(i * 750));
+        for (int i = 0; i < 4; i++) lines.add(new Line(0.2f + (i * 0.2f), 4000 + (i * 1000), i * 500));
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        
-        width = getWidth();
-        height = getHeight();
+        int width = getWidth();
+        int height = getHeight();
+        if (width <= 0 || height <= 0) { invalidate(); return; }
 
-        // If screen size isn't ready, don't draw yet, just wait for next frame
-        if (width <= 0 || height <= 0) {
-            invalidate();
-            return;
-        }
-
-        long currentTime = System.currentTimeMillis();
-        long elapsed = currentTime - startTime;
-
+        long elapsed = System.currentTimeMillis() - startTime;
         canvas.drawColor(bgColor);
 
         int centerX = width / 2;
         int centerY = height / 2;
 
-        // Draw News Lines (Shimmering)
+        // Add a gentle floating "bobbing" effect to the center (Vertical float)
+        float floatOffset = (float) Math.sin(elapsed / 800.0) * 15f;
+
+        // Draw Lines (Shimmering news lines)
         for (Line line : lines) {
             float progress = ((elapsed + line.delay) % line.duration) / (float) line.duration;
             float x = -width + (progress * width * 2);
-            
-            linePaint.setShader(new LinearGradient(
-                x, 0, x + width, 0,
-                new int[]{Color.TRANSPARENT, primaryColor, Color.TRANSPARENT},
-                new float[]{0f, 0.5f, 1f},
-                Shader.TileMode.CLAMP
-            ));
+            linePaint.setShader(new LinearGradient(x, 0, x + width, 0, new int[]{Color.TRANSPARENT, primaryColor, Color.TRANSPARENT}, new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
             linePaint.setAlpha(25);
-            canvas.drawLine(0, height * line.yPos, width, height * line.yPos, linePaint);
+            canvas.drawLine(0, height * line.yPos + floatOffset * 0.5f, width, height * line.yPos + floatOffset * 0.5f, linePaint);
         }
 
-        // Draw Ripples
+        // Draw Ripples (Breathing & Organic)
+        ripplePaint.setColor(primaryColor);
         for (Ripple ripple : ripples) {
-            float progress = ((elapsed + ripple.delay) % 3000) / 3000f;
-            float radius = 50 + (progress * Math.max(width, height) / 1.5f);
-            int alpha = (int) (255 * (0.2f * (1 - progress)));
+            float progress = ((elapsed + ripple.delay) % 3500) / 3500f;
             
-            if (alpha > 0) {
-                ripplePaint.setAlpha(alpha);
-                canvas.drawCircle(centerX, centerY, radius, ripplePaint);
-            }
+            // Non-linear expansion for "floating" feel
+            float curvedProgress = (float) Math.pow(progress, 0.7);
+            float radius = 80 + (curvedProgress * Math.max(width, height) / 1.3f);
+            
+            // Fade-in and Fade-out curve
+            float opacity = 0f;
+            if (progress < 0.2f) opacity = progress / 0.2f;
+            else opacity = 1f - ((progress - 0.2f) / 0.8f);
+            
+            ripplePaint.setAlpha((int) (255 * (0.12f * opacity)));
+            canvas.drawCircle(centerX, centerY + floatOffset, radius, ripplePaint);
         }
 
-        // Draw Logo Text (Gradient matching Web)
-        float logoProgress = Math.min(1f, elapsed / 800f);
+        // Draw Logo (Bobbing Float)
+        float logoProgress = Math.min(1f, elapsed / 1000f);
         textPaint.setAlpha((int) (255 * logoProgress));
-        
-        // Re-create shader based on current centerX/centerY
-        textPaint.setShader(new LinearGradient(
-            centerX - 250, centerY, centerX + 250, centerY,
-            new int[]{primaryColor, Color.parseColor("#8B5CF6")},
-            null,
-            Shader.TileMode.CLAMP
-        ));
-
-        canvas.drawText(logoText, centerX, centerY + 20, textPaint);
+        textPaint.setShader(new LinearGradient(centerX - 250, centerY + floatOffset, centerX + 250, centerY + floatOffset, new int[]{primaryColor, Color.parseColor("#8B5CF6")}, null, Shader.TileMode.CLAMP));
+        canvas.drawText(logoText, centerX, centerY + 20 + floatOffset, textPaint);
 
         invalidate();
     }
 
-    private static class Ripple {
-        long delay;
-        Ripple(long delay) { this.delay = delay; }
-    }
-
-    private static class Line {
-        float yPos;
-        long duration;
-        long delay;
-        Line(float yPos, long duration, long delay) {
-            this.yPos = yPos;
-            this.duration = duration;
-            this.delay = delay;
-        }
-    }
+    private static class Ripple { long delay; Ripple(long delay) { this.delay = delay; } }
+    private static class Line { float yPos; long duration; long delay; Line(float yPos, long duration, long delay) { this.yPos = yPos; this.duration = duration; this.delay = delay; } }
 }

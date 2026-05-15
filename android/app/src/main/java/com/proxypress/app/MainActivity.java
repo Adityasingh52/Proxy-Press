@@ -1,7 +1,7 @@
 package com.proxypress.app;
 
+import android.app.Dialog;
 import android.os.Bundle;
-import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -9,33 +9,27 @@ import android.webkit.WebChromeClient;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    private NativeSplashView splashView;
+    private Dialog splashDialog;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        showNativeSplash();
         
-        // Add native splash view on top of everything
-        splashView = new NativeSplashView(this);
-        addContentView(splashView, new ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 
-            ViewGroup.LayoutParams.MATCH_PARENT
-        ));
-
-        // Allow Web to hide it
-        this.getBridge().getWebView().addJavascriptInterface(new Object() {
-            @JavascriptInterface
-            public void hide() {
-                hideNativeSplash();
-            }
-        }, "AndroidNativeSplash");
-
-        // Emergency Escape: If user taps the splash, hide it
-        splashView.setOnClickListener(v -> hideNativeSplash());
-
-        // SAFETY FALLBACK: If web doesn't hide it in 5 seconds, hide it anyway
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::hideNativeSplash, 5000);
-
+        // Add JS interface after a short delay
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (this.getBridge() != null && this.getBridge().getWebView() != null) {
+                    this.getBridge().getWebView().addJavascriptInterface(new Object() {
+                        @JavascriptInterface
+                        public void hide() {
+                            hideNativeSplash();
+                        }
+                    }, "AndroidNativeSplash");
+                }
+            } catch (Exception e) {}
+        }, 800);
+        
         this.getBridge().getWebView().setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
@@ -44,18 +38,24 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
-    private void hideNativeSplash() {
+    private void showNativeSplash() {
+        if (isFinishing()) return;
+        
+        splashDialog = new Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen);
+        NativeSplashView splashView = new NativeSplashView(this);
+        splashDialog.setContentView(splashView);
+        splashDialog.setCancelable(false);
+        splashDialog.show();
+
+        // Safety: Auto-hide after 5 seconds
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::hideNativeSplash, 5000);
+    }
+
+    public void hideNativeSplash() {
         runOnUiThread(() -> {
-            if (splashView != null) {
-                splashView.animate()
-                    .alpha(0f)
-                    .setDuration(500)
-                    .withEndAction(() -> {
-                        if (splashView != null && splashView.getParent() != null) {
-                            ((ViewGroup) splashView.getParent()).removeView(splashView);
-                            splashView = null;
-                        }
-                    });
+            if (splashDialog != null && splashDialog.isShowing()) {
+                splashDialog.dismiss();
+                splashDialog = null;
             }
         });
     }

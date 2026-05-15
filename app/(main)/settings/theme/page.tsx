@@ -90,10 +90,16 @@ export default function ThemeSettingsPage() {
     setThemeMode(mode);
     if (mode === 'system') {
       localStorage.removeItem('proxy-press-theme');
+      import('@capacitor/preferences').then(({ Preferences }) => {
+        Preferences.remove({ key: 'proxy-press-theme' });
+      });
       const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
       document.documentElement.classList.toggle('dark', prefersDark);
     } else {
       localStorage.setItem('proxy-press-theme', mode);
+      import('@capacitor/preferences').then(({ Preferences }) => {
+        Preferences.set({ key: 'proxy-press-theme', value: mode });
+      });
       document.documentElement.classList.toggle('dark', mode === 'dark');
     }
   };
@@ -104,18 +110,28 @@ export default function ThemeSettingsPage() {
     setIsCustom(true);
     applyColors(newColors);
     localStorage.setItem('proxy-press-custom-theme', JSON.stringify(newColors));
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.set({ key: 'proxy-press-custom-theme', value: JSON.stringify(newColors) });
+    });
   };
 
   const applyPreset = (colors: CustomColors, isDarkMode: boolean) => {
     setCustomColors(colors);
     setIsCustom(true);
     applyColors(colors);
-    localStorage.setItem('proxy-press-custom-theme', JSON.stringify(colors));
+    const colorsJson = JSON.stringify(colors);
+    localStorage.setItem('proxy-press-custom-theme', colorsJson);
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.set({ key: 'proxy-press-custom-theme', value: colorsJson });
+    });
     handleModeChange(isDarkMode ? 'dark' : 'light');
   };
 
   const resetTheme = () => {
     localStorage.removeItem('proxy-press-custom-theme');
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.remove({ key: 'proxy-press-custom-theme' });
+    });
     setIsCustom(false);
     // Remove inline styles to fall back to CSS defaults
     const keys: (keyof CustomColors)[] = ['primary', 'bg', 'surface', 'accent', 'border', 'text-primary'];
