@@ -7,7 +7,7 @@ import './SplashScreen.css';
 export default function SplashScreen() {
   const [isVisible, setIsVisible] = useState(() => {
     if (typeof window !== 'undefined') {
-      return !sessionStorage.getItem('splash_shown');
+      return !localStorage.getItem('splash_shown');
     }
     return true;
   });
@@ -52,7 +52,7 @@ export default function SplashScreen() {
 
     // After 2 seconds, fade out the web splash
     if (isVisible) {
-      sessionStorage.setItem('splash_shown', 'true');
+      localStorage.setItem('splash_shown', 'true');
       
       const timer = setTimeout(() => {
         setIsVisible(false);
