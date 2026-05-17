@@ -402,58 +402,76 @@ function MessagesContent() {
     const channel = supabase
       .channel('messages-realtime')
       .on('postgres_changes', {
-        event: '*', // Listen to INSERT, UPDATE, DELETE
+        event: '*', 
         schema: 'public',
         table: 'messages'
       }, async (payload) => {
         console.log('[Realtime] Message change detected:', payload);
         
-        // Trigger a conversation refresh to get latest state (unread counts, last message, etc.)
-        const convs = await getConversations(currentUserId);
-        if (convs) {
+        const newMsg = payload.new as any;
+        if (!newMsg) return;
+
+        // Handle NEW message (INSERT)
+        if (payload.eventType === 'INSERT') {
           setConversations(prev => {
-            const mappedConvs = convs.map((dbConv: any) => {
-              const otherParticipant = dbConv.participants?.find((p: any) => p.userId !== currentUserId);
-              const otherUser = otherParticipant?.user;
-              
-              const displayName = (otherUser?.name && otherUser.name.includes('/uploads/')) 
-                ? (otherUser.username || 'User') 
-                : (otherUser?.name || 'Unknown User');
+            return prev.map(c => {
+              // If this message belongs to this conversation
+              if (c.id === newMsg.conversationId) {
+                // Prevent duplicate messages (e.g. if we sent it and already added it optimistically)
+                const exists = c.messages.some(m => m.id === newMsg.id || m.id === `m${new Date(newMsg.created_at).getTime()}`);
+                
+                let updatedMessages = c.messages;
+                if (!exists) {
+                  updatedMessages = [...c.messages, {
+                    id: newMsg.id,
+                    senderId: newMsg.senderId,
+                    text: newMsg.text,
+                    timestamp: new Date(newMsg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    seen: false,
+                    type: newMsg.type || 'text',
+                    attachment: newMsg.attachment,
+                    status: 'sent'
+                  }];
 
-              // Preserve messages for conversations that haven't changed to avoid unnecessary re-renders
-              const existing = prev.find(p => p.id === dbConv.id);
-              const isMsgChange = payload.table === 'messages' && (payload.new as any)?.conversationId === dbConv.id;
-              
-              return {
-                id: dbConv.id,
-                user: {
-                  id: otherUser?.id || 'unknown',
-                  name: displayName,
-                  avatar: otherUser?.avatar || (displayName ? displayName.substring(0, 1) : 'U'),
-                  profilePicture: otherUser?.profilePicture,
-                  online: true,
-                },
-                lastMessage: dbConv.lastMessage || '',
-                lastMessageTime: formatMessageTime(dbConv.lastMessageTime) || '',
-                rawLastMessageTime: dbConv.lastMessageTime || '',
-                unreadCount: dbConv.unreadCount || 0,
-                isTyping: false,
-                muted: dbConv.muted || false,
-                vanishMode: dbConv.vanishMode || false,
-                vanishDuration: dbConv.vanishDuration || 3600,
-                // If this is the chat where the message happened, trigger message list refresh
-                messages: existing?.messages || [],
-                historyLoaded: isMsgChange ? false : (existing?.historyLoaded || false)
-              };
+                  // Save to cache in background
+                  setTimeout(() => {
+                    OfflineManager.saveData(`msgs_${c.id}`, updatedMessages);
+                  }, 0);
+                }
+
+                return {
+                  ...c,
+                  messages: updatedMessages,
+                  lastMessage: newMsg.text,
+                  lastMessageTime: 'Just now',
+                  rawLastMessageTime: newMsg.created_at,
+                  // Increment unread count only if it's not the active chat and not sent by me
+                  unreadCount: (activeChat === c.id || newMsg.senderId === currentUserId) ? c.unreadCount : c.unreadCount + 1
+                };
+              }
+              return c;
             });
-
-            // If the change happened in the ACTIVE chat, trigger a re-fetch of messages
-            if (activeChat && (payload.new as any)?.conversationId === activeChat) {
-              setActiveChatVersion(v => v + 1);
-            }
-
-            return mappedConvs;
           });
+        }
+        
+        // Handle message update (e.g. seen status)
+        if (payload.eventType === 'UPDATE') {
+          setConversations(prev => prev.map(c => {
+            if (c.id === newMsg.conversationId) {
+              const updatedMessages = c.messages.map(m => m.id === newMsg.id ? { ...m, seen: newMsg.seen } : m);
+              
+              // Save to cache in background
+              setTimeout(() => {
+                OfflineManager.saveData(`msgs_${c.id}`, updatedMessages);
+              }, 0);
+
+              return {
+                ...c,
+                messages: updatedMessages
+              };
+            }
+            return c;
+          }));
         }
       })
       .subscribe();
