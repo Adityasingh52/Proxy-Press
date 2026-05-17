@@ -103,7 +103,12 @@ export default function MobileBottomNav() {
           
           // Sync profile data in background without blocking UI
           actions.getProfileData(user.id).then(data => {
-            if (data) OfflineManager.saveData(`profile_cache_${user.id}`, { ...data, timestamp: Date.now() });
+            if (data) {
+              const cacheData = { ...data, timestamp: Date.now() };
+              OfflineManager.saveData(`profile_cache_${user.id}`, cacheData);
+              // Mirror to localStorage for instant synchronous load on Profile Page
+              localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify(cacheData));
+            }
           });
         }
       } catch (e) {}
