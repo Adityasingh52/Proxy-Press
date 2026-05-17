@@ -127,22 +127,12 @@ import { unstable_noStore as noStore } from 'next/cache';
 export async function getConversations(userId: string) {
   noStore();
   await cleanupExpiredMessages();
-  // Cache conversations list per user for 15 seconds (polling will refresh)
-  return withCache(
-    `conversations:${userId}`,
-    async () => JSON.parse(JSON.stringify(await queries.getConversations(userId))),
-    15
-  );
+  return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
 }
 
 export async function getMessages(conversationId: string) {
   noStore();
-  // Cache messages per conversation for 30 seconds (invalidated on new message)
-  return withCache(
-    `messages:${conversationId}`,
-    async () => JSON.parse(JSON.stringify(await queries.getMessages(conversationId))),
-    30
-  );
+  return JSON.parse(JSON.stringify(await queries.getMessages(conversationId)));
 }
 
 import { v2 as cloudinary } from 'cloudinary';
@@ -384,19 +374,10 @@ export async function sendMessage(data: {
   return { success: true, id: messageId, conversationId: finalConversationId };
 }
 
-// Helper to bust Redis caches for a conversation and its participants
+// Helper to bust Redis caches for a conversation and its participants (Removed: Using DB directly now)
 async function invalidateConversationCache(conversationId: string) {
-  try {
-    const participants = await db.query.conversationParticipants.findMany({
-      where: eq(schema.conversationParticipants.conversationId, conversationId)
-    });
-    await Promise.all([
-      redis.del(`messages:${conversationId}`).catch(() => null),
-      ...participants.map(p => redis.del(`conversations:${p.userId}`).catch(() => null)),
-    ]);
-  } catch (e) {
-    console.error('Cache invalidation error:', e);
-  }
+  // Do nothing, Redis caching removed for messaging to prevent hangs.
+  return;
 }
 
 export async function updateConversationMute(conversationId: string, muted: boolean) {
