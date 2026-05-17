@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: '20px', paddingTop: 'calc(20px + env(safe-area-inset-top))' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '30px' }}>
         <div style={{ width: '24px', height: '24px', background: 'var(--surface-3)', borderRadius: '4px' }} />

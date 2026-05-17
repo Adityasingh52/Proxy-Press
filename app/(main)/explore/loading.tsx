@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div style={{ padding: '20px' }}>
+    <div style={{ padding: '20px', paddingTop: 'calc(20px + env(safe-area-inset-top))' }}>
       <div style={{ width: '100%', height: '40px', background: 'var(--surface-3)', borderRadius: '8px', marginBottom: '20px' }} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
         {[1, 2, 3, 4].map(i => (

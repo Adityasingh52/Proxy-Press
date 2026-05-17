@@ -1,6 +1,6 @@
 export default function Loading() {
   return (
-    <div className="profile-skeleton" style={{ padding: '20px' }}>
+    <div className="profile-skeleton" style={{ padding: '20px', paddingTop: 'calc(20px + env(safe-area-inset-top))' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px' }}>
         <div className="skeleton-circle" style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--surface-3)' }} />
         <div style={{ flex: 1 }}>
