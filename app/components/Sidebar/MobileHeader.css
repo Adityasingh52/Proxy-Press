@@ -4,18 +4,19 @@
   top: 0;
   left: 0;
   right: 0;
+  height: 60px;
   background-color: var(--surface);
   border-bottom: 1px solid var(--border);
   z-index: 50;
   box-shadow: var(--shadow-sm);
-  padding-top: max(24px, env(safe-area-inset-top));
+  padding-top: env(safe-area-inset-top);
 }
 
 .mobile-header-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 60px;
+  height: 100%;
   max-width: 500px;
   margin: 0 auto;
   padding: 0 16px;
