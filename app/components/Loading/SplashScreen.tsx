@@ -5,7 +5,12 @@ import { SplashScreen as NativeSplash } from '@capacitor/splash-screen';
 import './SplashScreen.css';
 
 export default function SplashScreen() {
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !sessionStorage.getItem('splash_shown');
+    }
+    return true;
+  });
 
   useEffect(() => {
     // Hide native splash screen as soon as web splash is ready
@@ -46,11 +51,15 @@ export default function SplashScreen() {
     hideNative();
 
     // After 2 seconds, fade out the web splash
-    const timer = setTimeout(() => {
-      setIsVisible(false);
-    }, 2000);
+    if (isVisible) {
+      sessionStorage.setItem('splash_shown', 'true');
+      
+      const timer = setTimeout(() => {
+        setIsVisible(false);
+      }, 2000);
 
-    return () => clearTimeout(timer);
+      return () => clearTimeout(timer);
+    }
   }, []);
 
   return (
