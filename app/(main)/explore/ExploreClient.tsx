@@ -30,18 +30,22 @@ export default function ExploreClient({ initialData }: { initialData: any }) {
   // Load initial data / background refresh
   useEffect(() => {
     async function loadInitial() {
+      // If we HAVE initial data from the server, we can skip the initial fetch!
+      if (initialData) {
+        setIsLoading(false);
+        return;
+      }
+
       // If no server data, try SQLite Offline Feed First
-      if (!initialData) {
-        const offlineExplore = await OfflineManager.getOfflineExploreFeed();
-        if (offlineExplore && offlineExplore.length > 0) {
-          console.log('[Offline] SQLite Explore Feed loaded');
-          const adapted = offlineExplore.map((p: any) => ({
-            ...p,
-            imageUrl: p.localImageUrl || p.imageUrl
-          }));
-          setTrendingPosts(adapted);
-          setIsLoading(false);
-        }
+      const offlineExplore = await OfflineManager.getOfflineExploreFeed();
+      if (offlineExplore && offlineExplore.length > 0) {
+        console.log('[Offline] SQLite Explore Feed loaded');
+        const adapted = offlineExplore.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl
+        }));
+        setTrendingPosts(adapted);
+        setIsLoading(false);
       }
 
       try {
