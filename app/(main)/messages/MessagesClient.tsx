@@ -1924,27 +1924,28 @@ function MessagesContent() {
     };
 
     // Optimistic UI update — message appears instantly
-    setConversations(prev => {
-      const activeIdx = prev.findIndex(c => c.id === activeChat);
-      if (activeIdx === -1) return prev;
-
+    const activeIdx = conversations.findIndex(c => c.id === activeChat);
+    if (activeIdx !== -1) {
       const updatedConv = { 
-        ...prev[activeIdx], 
-        messages: [...prev[activeIdx].messages, newMsg], 
+        ...conversations[activeIdx], 
+        messages: [...conversations[activeIdx].messages, newMsg], 
         lastMessage: newMsg.text, 
         lastMessageTime: 'Just now',
         rawLastMessageTime: new Date().toISOString()
       };
 
-      const filtered = prev.filter(c => c.id !== activeChat);
+      const filtered = conversations.filter(c => c.id !== activeChat);
       const result = [updatedConv, ...filtered];
-      
-      // Update both caches instantly to prevent disappearing on next poll
-      OfflineManager.saveData(`convs_${currentUserId}`, result);
-      OfflineManager.saveData(`msgs_${activeChat}`, updatedConv.messages);
-      
-      return result;
-    });
+
+      // 1. Update React state instantly
+      setConversations(result);
+
+      // 2. Save to Cache in the background (prevents freezing the UI)
+      setTimeout(() => {
+        OfflineManager.saveData(`convs_${currentUserId}`, result);
+        OfflineManager.saveData(`msgs_${activeChat}`, updatedConv.messages);
+      }, 0);
+    }
     setMessageInput('');
     setReplyingTo(null);
     setShowEmojiPicker(false);
