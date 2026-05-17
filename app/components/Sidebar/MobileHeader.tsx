@@ -1,16 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useNotifications } from '@/lib/NotificationsContext';
 import './MobileHeader.css';
 
 export default function MobileHeader() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { unreadCount, markAllRead } = useNotifications();
 
   const isNotifications = pathname === '/notifications';
-  const isMessages = pathname === '/messages';
+  const isMessages = pathname.startsWith('/messages');
   const isProfile = pathname.startsWith('/profile');
   const isCreate = pathname.startsWith('/create');
   const isExplore = pathname.startsWith('/explore');
@@ -18,8 +19,9 @@ export default function MobileHeader() {
 
   const isSettings = pathname.startsWith('/settings');
   const isAdmin = pathname.startsWith('/admin');
+  const isStory = searchParams.get('story') === 'true';
 
-  if (isProfile || isCreate || isExplore || isSettings || isAdmin || isArticle) return null;
+  if (isProfile || isCreate || isExplore || isSettings || isAdmin || isArticle || isMessages || isStory) return null;
 
   return (
     <header className="mobile-header">
@@ -65,7 +67,7 @@ export default function MobileHeader() {
             <div className="mobile-header-left">
               <h1 className="mobile-header-title" style={{ fontSize: '18px', letterSpacing: '-0.3px' }}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '2px' }}>
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
                 alexj
               </h1>
@@ -73,16 +75,16 @@ export default function MobileHeader() {
             <div className="mobile-header-right" style={{ gap: '4px' }}>
               <button className="mobile-header-action-btn" aria-label="Create" style={{ padding: '6px' }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/>
-                  <line x1="12" y1="8" x2="12" y2="16"/>
-                  <line x1="8" y1="12" x2="16" y2="12"/>
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="12" y1="8" x2="12" y2="16" />
+                  <line x1="8" y1="12" x2="16" y2="12" />
                 </svg>
               </button>
               <button className="mobile-header-action-btn" aria-label="Menu" style={{ padding: '6px' }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="3" y1="6" x2="21" y2="6"/>
-                  <line x1="3" y1="12" x2="21" y2="12"/>
-                  <line x1="3" y1="18" x2="21" y2="18"/>
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
                 </svg>
               </button>
             </div>
@@ -95,9 +97,9 @@ export default function MobileHeader() {
                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
             </div>
-            <input 
-              type="text" 
-              placeholder="Search..." 
+            <input
+              type="text"
+              placeholder="Search..."
               className="mobile-search-input"
               style={{
                 width: '100%',
@@ -123,13 +125,13 @@ export default function MobileHeader() {
             </div>
             <div className="mobile-header-right">
               <Link href="/notifications" className="premium-notif-btn" aria-label="Notifications">
-                <svg 
-                  width="28" 
-                  height="28" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  strokeWidth="2.5" 
-                  strokeLinecap="round" 
+                <svg
+                  width="28"
+                  height="28"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
                   strokeLinejoin="round"
                 >
                   <defs>
@@ -138,8 +140,8 @@ export default function MobileHeader() {
                       <stop offset="100%" stopColor="#8B5CF6" />
                     </linearGradient>
                   </defs>
-                  <path 
-                    d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" 
+                  <path
+                    d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"
                     stroke="url(#notif-grad)"
                   />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="url(#notif-grad)" />

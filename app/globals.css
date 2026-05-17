@@ -37,7 +37,8 @@ html, body {
   min-height: 100%;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding-top: var(--safe-area-inset-top);
+  /* Use safe area if available, but always keep at least 44px for safety to clear the status bar */
+  padding-top: max(var(--safe-area-inset-top), 44px);
   padding-bottom: calc(var(--safe-area-inset-bottom) + 80px); /* Extra space for bottom nav */
 }
 
@@ -143,6 +144,12 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   transition: background-color var(--transition-slow), color var(--transition-slow);
+}
+
+/* Prevent transitions during initial theme application to avoid flicker */
+.theme-loading,
+.theme-loading * {
+  transition: none !important;
 }
 
 /* ─────────────────────────────────────────
@@ -1214,7 +1221,13 @@ body {
 }
 
 .extra-bottom-space {
-  padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important;
+  padding-bottom: calc(100px + env(safe-area-inset-bottom)) !important;
+}
+
+@media (max-width: 768px) {
+  .has-mobile-header {
+    padding-top: calc(60px + max(24px, env(safe-area-inset-top))) !important;
+  }
 }
 
 /* Notification Toast */
@@ -1311,3 +1324,5 @@ body {
   color: var(--text-primary);
 }
 
+@keyframes page-enter { from { opacity: 0; transform: scale(0.98) translateY(8px); filter: blur(4px); } to { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); } } .animate-page-enter { animation: page-enter 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; will-change: transform, opacity, filter; } .no-tap-delay { touch-action: manipulation; }
+.page-wrapper { width: 100%; display: flex; flex-direction: column; align-items: center; min-height: 100%; } .msg-chat-panel, .msg-list-panel { width: 100% !important; } @media (max-width: 768px) { .main-content { padding: 0 !important; } .page-wrapper { align-items: stretch; } }

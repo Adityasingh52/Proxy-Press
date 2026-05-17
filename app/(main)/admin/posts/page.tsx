@@ -3,10 +3,19 @@
 import { useEffect, useState } from 'react';
 import { getAllPostsAdmin, adminDeletePost } from '@/lib/actions';
 import Link from 'next/link';
+import { Suspense } from 'react';
 import '../../settings/settings.css';
 import './admin-posts.css';
 
 export default function AdminPostsPage() {
+  return (
+    <Suspense fallback={null}>
+      <AdminPostsContent />
+    </Suspense>
+  );
+}
+
+function AdminPostsContent() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { getUnreadMessageCountAction } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
+import { useIdentity } from '@/lib/IdentityContext';
 import './MobileBottomNav.css';
 
 const navItems = [
@@ -65,48 +67,78 @@ const navItems = [
 
 export default function MobileBottomNav() {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [unreadCount, setUnreadCount] = useState(0);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('proxypress_user_id');
-    }
-    return null;
-  });
+  const [optimisticTab, setOptimisticTab] = useState<string | null>(null);
+  const { currentUserId, refreshIdentity } = useIdentity();
 
-  // 1. Initial Data Load & Periodic Refresh (Mount Only)
   useEffect(() => {
-    async function initLoad() {
+    setOptimisticTab(null);
+  }, [pathname]);
+
+  // 1. Static Prefetching (Run once to warm up the cache)
+  useEffect(() => {
+    router.prefetch('/');
+    router.prefetch('/explore');
+    router.prefetch('/create');
+    router.prefetch('/messages');
+    router.prefetch('/settings');
+    if (currentUserId) router.prefetch(`/profile/${currentUserId}`);
+  }, [router, currentUserId]);
+
+  // 2. Background Sync (Lightweight & Non-Blocking)
+  useEffect(() => {
+    async function backgroundSync() {
       try {
         const actions = await import('@/lib/actions');
         const user = await actions.getCurrentUser();
         
         if (user) {
-          setCurrentUserId(user.id);
-          localStorage.setItem('proxypress_user_id', user.id);
+          refreshIdentity();
+          OfflineManager.saveData('last_user_id', user.id);
           
-          // Refresh count immediately
           const count = await actions.getUnreadMessageCountAction();
           setUnreadCount(count);
-          const profileData = await actions.getProfileData(user.id);
-
-          if (profileData) {
-            localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify({ ...profileData, timestamp: Date.now() }));
-          }
+          
+          // Sync profile data in background without blocking UI
+          actions.getProfileData(user.id).then(data => {
+            if (data) {
+              const cacheData = { ...data, timestamp: Date.now() };
+              OfflineManager.saveData(`profile_cache_${user.id}`, cacheData);
+              // Mirror to localStorage for instant synchronous load on Profile Page
+              localStorage.setItem(`profile_cache_${user.id}`, JSON.stringify(cacheData));
+            }
+          });
         }
-      } catch (e) {
-        console.error('Initial load failed', e);
-      }
+      } catch (e) {}
     }
 
-    initLoad();
-    const interval = setInterval(initLoad, 20000); // 20s interval is enough
+    backgroundSync();
+    const interval = setInterval(backgroundSync, 30000); // Increased interval for better battery/performance
     return () => clearInterval(interval);
   }, []);
 
-  // 2. Lightweight Pathname Refresh (Only for notifications/badge)
+  // 3. UI State Sync
   useEffect(() => {
     getUnreadMessageCountAction().then(setUnreadCount).catch(() => {});
+    setOptimisticTab(null);
   }, [pathname]);
+
+  const isStory = searchParams.get('story') === 'true';
+  const chatId = searchParams.get('chatId');
+  const userId = searchParams.get('userId');
+  
+  const isMessages = pathname.startsWith('/messages');
+  const isSettings = pathname.startsWith('/settings') || pathname.startsWith('/profile/settings');
+  const isEditProfile = pathname.startsWith('/profile/edit');
+  const isAdmin = pathname.startsWith('/admin');
+  const isCalling = searchParams.get('calling') === 'true';
+  
+  // Hide footer if we are inside a story view, a call, a specific chat, or on settings/admin
+  const shouldHide = isStory || isCalling || (isMessages && (chatId || userId)) || isSettings || isEditProfile || isAdmin;
+
+  if (shouldHide) return null;
 
   return (
     <nav className="mobile-bottom-nav">
@@ -116,15 +148,16 @@ export default function MobileBottomNav() {
           
           // CRITICAL: Ensure the Profile link is ALWAYS direct and never depends on a slow redirect
           if (href === '/profile') {
-            const storedId = typeof window !== 'undefined' ? (currentUserId || localStorage.getItem('proxypress_user_id')) : null;
-            if (storedId) {
-              href = `/profile/${storedId}`;
+            if (currentUserId) {
+              href = `/profile/${currentUserId}`;
             }
           }
 
-          const isActive = item.href === '/' 
-            ? pathname === '/' 
-            : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/'));
+          const isActive = optimisticTab 
+            ? item.href === optimisticTab
+            : (item.href === '/' 
+              ? pathname === '/' 
+              : pathname.startsWith(item.href) || (item.href === '/profile' && pathname.includes('/profile/') && !pathname.includes('/settings')));
 
           const badge = item.href === '/messages' ? unreadCount : 0;
           
@@ -145,6 +178,7 @@ export default function MobileBottomNav() {
             <Link
               key={item.href}
               href={href}
+              onClick={() => setOptimisticTab(item.href)}
               className={`mobile-nav-item ${isActive ? 'active' : ''}`}
             >
               <div className="mobile-nav-icon-wrapper">

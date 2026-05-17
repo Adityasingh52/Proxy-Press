@@ -1,9 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
+import { PushNotificationManager } from './push-notifications';
+import { OfflineManager } from './offline-manager';
 
 export default function PWAProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
+    // Initialize Offline Manager (SQLite & Network Listeners)
+    OfflineManager.init();
+
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker
@@ -16,6 +21,9 @@ export default function PWAProvider({ children }: { children: React.ReactNode })
           });
       });
     }
+
+    // Register for native push notifications
+    PushNotificationManager.register();
   }, []);
 
   return <>{children}</>;

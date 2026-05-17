@@ -41,7 +41,17 @@ export default function ImageAdjustModal({ imageUrl, onSave, onClose }: ImageAdj
   const [initialTouchDistance, setInitialTouchDistance] = useState<number | null>(null);
   const [initialZoom, setInitialZoom] = useState(1);
   
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    const originalStyle = window.getComputedStyle(document.body).overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalStyle;
+    };
+  }, []);
+
   const containerRef = useRef<HTMLDivElement>(null);
+
 
   const handleConfirmCrop = async () => {
     if (!containerRef.current) return;

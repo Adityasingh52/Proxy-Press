@@ -4,19 +4,25 @@ import MobileBottomNav from '@/app/components/Sidebar/MobileBottomNav';
 import MobileHeader from '@/app/components/Sidebar/MobileHeader';
 import MainContent from '@/app/components/Layout/MainContent';
 
+import { Suspense } from 'react';
 import UserActivityRecorder from '@/app/components/UserActivityRecorder';
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <UserActivityRecorder />
-      <MobileHeader />
+      <Suspense fallback={null}>
+        <MobileHeader />
+      </Suspense>
+
       <LeftSidebar />
       <MainContent>
         {children}
       </MainContent>
       <RightSidebar />
-      <MobileBottomNav />
+      <Suspense fallback={null}>
+        <MobileBottomNav />
+      </Suspense>
     </div>
   );
 }

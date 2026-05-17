@@ -107,47 +107,57 @@ export async function getPostDetail(slug: string) {
   return JSON.parse(JSON.stringify({ post, related, canComment }));
 }
 
+export async function updateFcmToken(token: string) {
+  const user = await getCurrentUser();
+  if (!user) return { success: false };
+
+  try {
+    await db.update(schema.users)
+      .set({ fcmToken: token })
+      .where(eq(schema.users.id, user.id));
+    return { success: true };
+  } catch (err) {
+    console.error('Failed to update FCM token:', err);
+    return { success: false };
+  }
+}
+
 import { unstable_noStore as noStore } from 'next/cache';
 
 export async function getConversations(userId: string) {
   noStore();
   await cleanupExpiredMessages();
-  // Cache conversations list per user for 15 seconds (polling will refresh)
-  return withCache(
-    `conversations:${userId}`,
-    async () => JSON.parse(JSON.stringify(await queries.getConversations(userId))),
-    15
-  );
+  return JSON.parse(JSON.stringify(await queries.getConversations(userId)));
 }
 
 export async function getMessages(conversationId: string) {
   noStore();
-  // Cache messages per conversation for 30 seconds (invalidated on new message)
-  return withCache(
-    `messages:${conversationId}`,
-    async () => JSON.parse(JSON.stringify(await queries.getMessages(conversationId))),
-    30
-  );
+  return JSON.parse(JSON.stringify(await queries.getMessages(conversationId)));
 }
 
 import { v2 as cloudinary } from 'cloudinary';
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
 
 /**
  * Universal Media Upload Action via Cloudinary
  */
 export async function uploadMedia(formData: FormData) {
-  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
-    throw new Error('Cloudinary environment variables are missing. Please check your Vercel settings.');
-  }
+  // Move config inside to prevent browser bundling issues
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
 
   const file = formData.get('file') as File;
   const category = formData.get('category') as 'images' | 'videos' | 'stories' | 'voice';
+
+  if (!process.env.CLOUDINARY_CLOUD_NAME || !process.env.CLOUDINARY_API_KEY || !process.env.CLOUDINARY_API_SECRET) {
+    console.error('CRITICAL: Cloudinary credentials missing in environment variables');
+    // For local development or emergency fallback, we return a local blob URL if it exists
+    if (file && (file as any).preview) return { url: (file as any).preview };
+    throw new Error('Upload service not configured. Please add CLOUDINARY_* keys to your Vercel Environment Variables.');
+  }
   
   if (!file) throw new Error('No file provided');
 
@@ -364,19 +374,10 @@ export async function sendMessage(data: {
   return { success: true, id: messageId, conversationId: finalConversationId };
 }
 
-// Helper to bust Redis caches for a conversation and its participants
+// Helper to bust Redis caches for a conversation and its participants (Removed: Using DB directly now)
 async function invalidateConversationCache(conversationId: string) {
-  try {
-    const participants = await db.query.conversationParticipants.findMany({
-      where: eq(schema.conversationParticipants.conversationId, conversationId)
-    });
-    await Promise.all([
-      redis.del(`messages:${conversationId}`).catch(() => null),
-      ...participants.map(p => redis.del(`conversations:${p.userId}`).catch(() => null)),
-    ]);
-  } catch (e) {
-    console.error('Cache invalidation error:', e);
-  }
+  // Do nothing, Redis caching removed for messaging to prevent hangs.
+  return;
 }
 
 export async function updateConversationMute(conversationId: string, muted: boolean) {
@@ -523,7 +524,7 @@ export async function markMessagesAsSeen(conversationId: string, userId: string)
     ));
 
   await invalidateConversationCache(conversationId);
-  revalidatePath('/messages');
+  // revalidatePath('/messages');
   return { success: true };
 }
 

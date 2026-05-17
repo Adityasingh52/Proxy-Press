@@ -133,7 +133,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="feed-container animate-fade-in" style={{ maxWidth: '640px' }} id="notifications-page">
+    <div className="feed-container animate-fade-in" style={{ maxWidth: '640px', paddingTop: '20px' }} id="notifications-page">
       {notifs.length === 0 && (
         <div style={{ textAlign: 'center', padding: '80px 0' }}>
           <div style={{ fontSize: '56px', marginBottom: '16px' }}>🔔</div>

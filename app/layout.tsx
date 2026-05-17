@@ -36,7 +36,10 @@ export const metadata: Metadata = {
 };
 
 import { NotificationsProvider } from "@/lib/NotificationsContext";
+import { IdentityProvider } from "@/lib/IdentityContext";
 import PWAProvider from "@/lib/PWAProvider";
+import SplashScreen from "@/app/components/Loading/SplashScreen";
+import CapacitorInitializer from "@/app/components/CapacitorInitializer";
 
 export default function RootLayout({
   children,
@@ -52,37 +55,73 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: `
           (function() {
             try {
+              document.documentElement.classList.add('theme-loading');
               const theme = localStorage.getItem('proxy-press-theme');
               const customTheme = localStorage.getItem('proxy-press-custom-theme');
               const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+              const isDark = theme === 'dark' || (!theme && prefersDark);
               
-              if (theme === 'dark' || (!theme && prefersDark)) {
+              if (isDark) {
                 document.documentElement.classList.add('dark');
               } else {
                 document.documentElement.classList.remove('dark');
               }
 
+              // Default backgrounds
+              let bgColor = isDark ? '#0F172A' : '#F8FAFC';
+
+              // Override with custom theme if present
               if (customTheme) {
-                const colors = JSON.parse(customTheme);
-                Object.entries(colors).forEach(([key, value]) => {
-                  document.documentElement.style.setProperty('--' + key, value);
-                  if (key === 'primary') {
-                    const r = parseInt(value.slice(1, 3), 16);
-                    const g = parseInt(value.slice(3, 5), 16);
-                    const b = parseInt(value.slice(5, 7), 16);
-                    document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
-                  }
-                });
+                try {
+                  const colors = JSON.parse(customTheme);
+                  if (colors.bg) bgColor = colors.bg;
+                  
+                  Object.entries(colors).forEach(([key, value]) => {
+                    document.documentElement.style.setProperty('--' + key, value);
+                    if (key === 'primary') {
+                      const r = parseInt(value.slice(1, 3), 16);
+                      const g = parseInt(value.slice(3, 5), 16);
+                      const b = parseInt(value.slice(5, 7), 16);
+                      document.documentElement.style.setProperty('--primary-rgb', r + ', ' + g + ', ' + b);
+                    }
+                  });
+                } catch (e) {}
               }
+              
+              // Apply the chosen background color to the root immediately
+              document.documentElement.style.backgroundColor = bgColor;
+              
+              // Create a style element to lock the background color
+              const style = document.createElement('style');
+              style.id = 'theme-lock-style';
+              style.innerHTML = 'html, body { background-color: ' + bgColor + ' !important; }';
+              document.head.appendChild(style);
+
+              // Cleanup loading class
+              setTimeout(function() {
+                document.documentElement.classList.remove('theme-loading');
+              }, 500);
             } catch (e) {}
           })();
         `}} />
+        <style dangerouslySetInnerHTML={{ __html: `
+          :root { color-scheme: light; }
+          :root.dark { color-scheme: dark; }
+          html, body { 
+            margin: 0; 
+            padding: 0; 
+          }
+        `}} />
       </head>
       <body suppressHydrationWarning>
+        <CapacitorInitializer />
+        <SplashScreen />
         <PWAProvider>
-          <NotificationsProvider>
-            {children}
-          </NotificationsProvider>
+          <IdentityProvider>
+            <NotificationsProvider>
+              {children}
+            </NotificationsProvider>
+          </IdentityProvider>
         </PWAProvider>
       </body>
     </html>

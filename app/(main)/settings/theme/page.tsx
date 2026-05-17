@@ -55,15 +55,35 @@ export default function ThemeSettingsPage() {
   const [isCustom, setIsCustom] = useState(false);
 
   useEffect(() => {
-    const storedTheme = localStorage.getItem('proxy-press-theme') as 'light' | 'dark' | null;
-    if (storedTheme) setThemeMode(storedTheme);
+    // 1. Restore from Preferences first (Shared Native Storage)
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.get({ key: 'proxy-press-theme' }).then(({ value }) => {
+        if (value) {
+          localStorage.setItem('proxy-press-theme', value);
+          setThemeMode(value as any);
+        }
+      });
+      Preferences.get({ key: 'proxy-press-custom-theme' }).then(({ value }) => {
+        if (value) {
+          localStorage.setItem('proxy-press-custom-theme', value);
+          setCustomColors(JSON.parse(value));
+          setIsCustom(true);
+          applyColors(JSON.parse(value));
+        }
+      });
+    }).catch(() => {});
+
+    // 2. Fallback to LocalStorage (Instant)
+    const storedTheme = localStorage.getItem('proxy-press-theme');
+    if (storedTheme) setThemeMode(storedTheme as any);
     else setThemeMode('system');
 
     const storedCustom = localStorage.getItem('proxy-press-custom-theme');
     if (storedCustom) {
       setCustomColors(JSON.parse(storedCustom));
       setIsCustom(true);
-    } else {
+      applyColors(JSON.parse(storedCustom));
+    } else if (storedTheme) {
       setCustomColors(storedTheme === 'dark' ? DEFAULT_DARK : DEFAULT_LIGHT);
     }
 
@@ -86,16 +106,33 @@ export default function ThemeSettingsPage() {
     });
   };
 
+  const updateStatusBar = (isDark: boolean, color: string) => {
+    import('@capacitor/status-bar').then(({ StatusBar, Style }) => {
+      StatusBar.setBackgroundColor({ color: color });
+      StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+    }).catch(() => {});
+  };
+
   const handleModeChange = (mode: 'light' | 'dark' | 'system') => {
     setThemeMode(mode);
+    let isDark = mode === 'dark';
+    
+    // 1. Update LocalStorage (Instant for Web)
     if (mode === 'system') {
       localStorage.removeItem('proxy-press-theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.classList.toggle('dark', prefersDark);
+      isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     } else {
       localStorage.setItem('proxy-press-theme', mode);
-      document.documentElement.classList.toggle('dark', mode === 'dark');
     }
+    
+    // 2. Update Android Preferences (Background Sync)
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      if (mode === 'system') Preferences.remove({ key: 'proxy-press-theme' });
+      else Preferences.set({ key: 'proxy-press-theme', value: mode });
+    }).catch(() => {});
+
+    document.documentElement.classList.toggle('dark', isDark);
+    updateStatusBar(isDark, isDark ? customColors.bg : DEFAULT_LIGHT.bg);
   };
 
   const handleColorChange = (key: keyof CustomColors, value: string) => {
@@ -103,26 +140,46 @@ export default function ThemeSettingsPage() {
     setCustomColors(newColors);
     setIsCustom(true);
     applyColors(newColors);
-    localStorage.setItem('proxy-press-custom-theme', JSON.stringify(newColors));
+    
+    const colorsJson = JSON.stringify(newColors);
+    localStorage.setItem('proxy-press-custom-theme', colorsJson);
+    
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.set({ key: 'proxy-press-custom-theme', value: colorsJson });
+    }).catch(() => {});
+
+    if (key === 'bg') {
+      updateStatusBar(themeMode === 'dark', value);
+    }
   };
 
   const applyPreset = (colors: CustomColors, isDarkMode: boolean) => {
     setCustomColors(colors);
     setIsCustom(true);
     applyColors(colors);
-    localStorage.setItem('proxy-press-custom-theme', JSON.stringify(colors));
+    
+    const colorsJson = JSON.stringify(colors);
+    localStorage.setItem('proxy-press-custom-theme', colorsJson);
+    
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.set({ key: 'proxy-press-custom-theme', value: colorsJson });
+    }).catch(() => {});
+
     handleModeChange(isDarkMode ? 'dark' : 'light');
+    updateStatusBar(isDarkMode, colors.bg);
   };
 
   const resetTheme = () => {
     localStorage.removeItem('proxy-press-custom-theme');
+    import('@capacitor/preferences').then(({ Preferences }) => {
+      Preferences.remove({ key: 'proxy-press-custom-theme' });
+    }).catch(() => {});
+
     setIsCustom(false);
-    // Remove inline styles to fall back to CSS defaults
     const keys: (keyof CustomColors)[] = ['primary', 'bg', 'surface', 'accent', 'border', 'text-primary'];
     keys.forEach(key => document.documentElement.style.removeProperty('--' + key));
     document.documentElement.style.removeProperty('--primary-rgb');
     
-    // Set colors state back to defaults based on mode
     setCustomColors(themeMode === 'dark' ? DEFAULT_DARK : DEFAULT_LIGHT);
   };
 

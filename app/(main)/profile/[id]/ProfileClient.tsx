@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation';
 import '../profile.css';
 import Link from 'next/link';
 import { blockUser, unblockUser, muteUser, reportUser, getBlockStatus, toggleFollow, getFollowStatus, getFollowCounts, getFollowers, getFollowing, getFollowRequestStatus, getProfileData } from '@/lib/actions';
+import { OfflineManager } from '@/lib/offline-manager';
+import { useIdentity } from '@/lib/IdentityContext';
+import { supabase } from '@/lib/supabase';
 
 const categoryColors: Record<string, string> = {
   Events: '#8B5CF6', Notices: '#F59E0B', Sports: '#10B981',
@@ -28,34 +31,53 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const cacheLoaded = useRef(false);
 
   const [isFollowing, setIsFollowing] = useState(initialData?.isFollowing || false);
+  const { currentUserId, refreshIdentity, isLoading: isIdentityLoading } = useIdentity();
+
   const [user, setUser] = useState<any>(() => {
     if (initialData?.user) return {
       ...initialData.user,
       postsCount: initialData.posts?.length || 0,
       statusDisplay: initialData.statusDisplay || null
     };
+    
     if (typeof window !== 'undefined') {
+      // 1. Check for Sync Metadata Mirror (INSTANT)
+      const metaCache = localStorage.getItem(`pp_meta_${id}`);
+      if (metaCache) return JSON.parse(metaCache);
+
+      // 2. Check specific profile cache (SQLite/Large)
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
           const parsed = JSON.parse(cached);
-          return parsed.user;
-        } catch (e) { return null; }
+          if (parsed.user) return parsed.user;
+        } catch (e) { }
+      }
+
+      // 2. Check global user data if this is our own profile
+      const storedViewerId = localStorage.getItem('last_user_id') || localStorage.getItem('proxypress_viewer_id');
+      if (id === storedViewerId) {
+        const shared = localStorage.getItem('proxypress_user_data');
+        if (shared) {
+          try {
+            return JSON.parse(shared);
+          } catch (e) { }
+        }
       }
     }
     return null;
   });
 
-  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
-    if (initialData?.currentUserId) return initialData.currentUserId;
-    if (typeof window !== 'undefined') return localStorage.getItem('proxypress_viewer_id');
-    return null;
-  });
-  const isMe = currentUserId && user ? currentUserId === user.id : false;
+  const isMe = currentUserId && (id === currentUserId || (user && currentUserId === user.id));
   
   const [userPosts, setUserPosts] = useState<any[]>(() => {
     if (initialData?.posts) return initialData.posts;
     if (typeof window !== 'undefined') {
+      // 1. Try Sync Grid Mirror (INSTANT)
+      const gridCache = localStorage.getItem(`pp_grid_${id}`);
+      if (gridCache) return JSON.parse(gridCache);
+
+      // 2. Try Legacy Cache
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -72,6 +94,9 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [followersCount, setFollowersCount] = useState<number>(() => {
     if (initialData?.followCounts) return initialData.followCounts.followers;
     if (typeof window !== 'undefined') {
+      const meta = localStorage.getItem(`pp_meta_${id}`);
+      if (meta) return JSON.parse(meta).followersCount || 0;
+      
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -86,6 +111,9 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   const [followingCount, setFollowingCount] = useState<number>(() => {
     if (initialData?.followCounts) return initialData.followCounts.following;
     if (typeof window !== 'undefined') {
+      const meta = localStorage.getItem(`pp_meta_${id}`);
+      if (meta) return JSON.parse(meta).followingCount || 0;
+
       const cached = localStorage.getItem(`profile_cache_${id}`);
       if (cached) {
         try {
@@ -101,9 +129,8 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   
   const [isLoading, setIsLoading] = useState(() => {
     if (initialData) return false;
-    if (typeof window !== 'undefined') {
-      return !localStorage.getItem(`profile_cache_${id}`);
-    }
+    // If we have user data from ANY cache (Local or Shared), we can show the UI immediately
+    if (user) return false;
     return true;
   });
   const [isBlocked, setIsBlocked] = useState(initialData?.isBlocked || false);
@@ -118,48 +145,114 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
 
   // Cache loading logic
   useEffect(() => {
-    if (typeof window !== 'undefined' && !cacheLoaded.current) {
-      const cached = localStorage.getItem(`profile_cache_${id}`);
-      if (cached) {
-        try {
-          const parsed = JSON.parse(cached);
-          // Only use cache if we don't have initialData or if the cache is very recent
-          if (!initialData) {
-            setUser(parsed.user);
-            setUserPosts(parsed.posts);
-            setIsFollowing(parsed.isFollowing);
-            setFollowersCount(parsed.followCounts?.followers || 0);
-            setFollowingCount(parsed.followCounts?.following || 0);
-            setIsLoading(false);
-          }
-          cacheLoaded.current = true;
-        } catch (e) {
-          console.error("Failed to load profile cache", e);
-        }
+    async function loadCache() {
+      if (cacheLoaded.current) return;
+      
+      // 1. Try SQLite first (New Relational Engine)
+      const offlineProfile = await OfflineManager.getOfflineProfile();
+      const offlinePosts = await OfflineManager.getOfflinePosts();
+
+      if (offlineProfile && !initialData) {
+        console.log(`[Offline] SQLite Profile loaded for: ${id}`);
+        
+        // Use the local cached images if available
+        const userToSet = {
+          ...offlineProfile,
+          avatar: offlineProfile.localAvatar || offlineProfile.avatar,
+          profilePicture: offlineProfile.localAvatar || offlineProfile.profilePicture
+        };
+
+        const postsToSet = offlinePosts.map((p: any) => ({
+          ...p,
+          imageUrl: p.localImageUrl || p.imageUrl
+        }));
+
+        setUser(userToSet);
+        setUserPosts(postsToSet);
+        
+        // Mirror metadata & top posts for instant sync on next visit
+        localStorage.setItem(`pp_meta_${id}`, JSON.stringify({
+          ...userToSet,
+          followersCount: userToSet.followersCount || 0,
+          followingCount: userToSet.followingCount || 0
+        }));
+        localStorage.setItem(`pp_grid_${id}`, JSON.stringify(postsToSet.slice(0, 6))); // Cache top 6
+
+        setIsLoading(false);
+        cacheLoaded.current = true;
+        return;
       }
+
+      // 2. Fallback to Preferences/LocalStorage (Legacy)
+      const cached = await OfflineManager.loadData<any>(`profile_cache_${id}`);
+      if (cached && !initialData) {
+        console.log(`[Offline] Legacy Cache load for: ${id}`);
+        setUser(cached.user);
+        setUserPosts(cached.posts);
+        setIsFollowing(cached.isFollowing);
+        setFollowersCount(cached.followCounts?.followers || 0);
+        setFollowingCount(cached.followCounts?.following || 0);
+        setIsLoading(false);
+      }
+      cacheLoaded.current = true;
     }
+
+    loadCache();
 
     // Background refresh if data is from cache or we want to ensure freshness
     async function refreshProfile() {
       try {
         const freshData = await getProfileData(id);
         if (freshData) {
-          setUser({
+          const updatedUser = {
             ...freshData.user,
             postsCount: freshData.posts?.length || 0,
             statusDisplay: freshData.statusDisplay || null
-          });
+          };
+          setUser(updatedUser);
+          // Mirror metadata & top posts for instant sync on next visit
+          if (typeof window !== 'undefined') {
+            const metaObj = {
+              ...updatedUser,
+              followersCount: freshData.followCounts?.followers || 0,
+              followingCount: freshData.followCounts?.following || 0
+            };
+            localStorage.setItem(`pp_meta_${id}`, JSON.stringify(metaObj));
+            if (freshData.posts) {
+              localStorage.setItem(`pp_grid_${id}`, JSON.stringify(freshData.posts.slice(0, 6)));
+            }
+          }
           setUserPosts(freshData.posts || []);
           setIsFollowing(freshData.isFollowing || false);
           setFollowersCount(freshData.followCounts?.followers || 0);
           setFollowingCount(freshData.followCounts?.following || 0);
+          
           if (freshData.currentUserId) {
-            setCurrentUserId(freshData.currentUserId);
-            localStorage.setItem('proxypress_viewer_id', freshData.currentUserId);
+            refreshIdentity();
+            OfflineManager.saveData('last_user_id', freshData.currentUserId);
+            
+            // SYNC TO SQLITE if this is my profile
+            if (id === freshData.currentUserId) {
+              OfflineManager.syncAllUserData(freshData.currentUserId);
+            }
           }
+
+          // Update Cache
+          OfflineManager.saveData(`profile_cache_${id}`, {
+            user: updatedUser,
+            posts: freshData.posts || [],
+            isFollowing: freshData.isFollowing || false,
+            followCounts: { 
+              followers: freshData.followCounts?.followers || 0, 
+              following: freshData.followCounts?.following || 0 
+            },
+            timestamp: Date.now()
+          });
+          
           setIsLoading(false);
         } else {
-          setIsLoading(false);
+          // If freshData is null (e.g. 404), only then stop loading if we don't have cached user
+          if (!user) setIsLoading(false);
         }
       } catch (err) {
         console.error("Background refresh failed", err);
@@ -170,19 +263,100 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     refreshProfile();
   }, [id, initialData]);
 
-  // Cache saving logic
+  // Manual cache save on user updates
   useEffect(() => {
-    if (typeof window !== 'undefined' && user) {
-      const cacheData = {
+    if (user) {
+      OfflineManager.saveData(`profile_cache_${id}`, {
         user,
         posts: userPosts,
         isFollowing,
         followCounts: { followers: followersCount, following: followingCount },
         timestamp: Date.now()
-      };
-      localStorage.setItem(`profile_cache_${id}`, JSON.stringify(cacheData));
+      });
     }
   }, [user, userPosts, id, isFollowing, followersCount, followingCount]);
+  
+  // ─── Supabase Real-time Updates ───
+  useEffect(() => {
+    if (!id) return;
+
+    // 1. Listen for Follower Updates
+    const channel = supabase
+      .channel(`profile-realtime-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follows',
+          filter: `followingId=eq.${id}`
+        },
+        (payload) => {
+          const isOurFollow = (payload.new as any)?.followerId === currentUserId || (payload.old as any)?.followerId === currentUserId;
+          
+          if (payload.eventType === 'INSERT') {
+            setFollowersCount(prev => prev + 1);
+            if (isOurFollow) setIsFollowing(true);
+          } else if (payload.eventType === 'DELETE') {
+            setFollowersCount(prev => prev - 1);
+            if (isOurFollow) setIsFollowing(false);
+          }
+        }
+      )
+      // 2. Listen for Post Like Updates
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'post_likes'
+        },
+        (payload) => {
+          const targetPostId = (payload.new as any)?.postId || (payload.old as any)?.postId;
+          if (targetPostId) {
+            setUserPosts(prev => prev.map(post => {
+              if (post.id === targetPostId) {
+                const currentLikes = typeof post.likes === 'number' ? post.likes : 0;
+                return { 
+                  ...post, 
+                  likes: payload.eventType === 'INSERT' ? currentLikes + 1 : Math.max(0, currentLikes - 1) 
+                };
+              }
+              return post;
+            }));
+          }
+        }
+      )
+      // 3. Listen for Follow Request Updates (Self -> Target)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follow_requests'
+        },
+        (payload) => {
+          // If we are the one who sent the request (or it involves us)
+          const isOurRequest = (payload.new as any)?.followerId === currentUserId || (payload.old as any)?.followerId === currentUserId;
+          const involvesThisProfile = (payload.new as any)?.followingId === id || (payload.old as any)?.followingId === id;
+          
+          if (isOurRequest && involvesThisProfile) {
+            if (payload.eventType === 'INSERT') {
+              setIsRequested(true);
+            } else if (payload.eventType === 'DELETE') {
+              setIsRequested(false);
+              // Note: If accepted, the 'follows' listener above will catch the INSERT 
+              // and set isFollowing(true) and update the count.
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
 
 
   // Options menu state
@@ -275,20 +449,34 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
   };
 
   const handleShareProfile = async () => {
+    const shareUrl = `${window.location.origin}/profile/${user?.id || id}`;
+    const shareData = {
+      title: `${user?.name || 'User'} on ProxyPress`,
+      text: `Check out ${user?.name || 'this profile'} on ProxyPress`,
+      url: shareUrl,
+    };
+
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: `${user?.name}'s Profile`,
-          text: `Check out ${user?.name}'s profile on ProxyPress`,
-          url: window.location.href,
-        });
-      } catch { }
+        await navigator.share(shareData);
+      } catch (err) {
+        // Only log if it's not a user cancellation
+        if ((err as any).name !== 'AbortError') {
+          console.error('Error sharing:', err);
+        }
+      }
     } else {
-      handleCopyLink();
-      return;
+      // Fallback for browsers without Web Share API
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        setToast({ message: 'Profile link copied!', type: 'info' });
+      } catch {
+        setToast({ message: 'Failed to share profile', type: 'danger' });
+      }
     }
     setShowOptionsMenu(false);
   };
+
 
   const handleMuteToggle = () => {
     setShowMuteConfirm(true);
@@ -450,26 +638,38 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
     }
   };
 
-  if (isLoading) {
-    return (
-      <div className="ig-profile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
-        <div className="spinner" />
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="ig-profile" style={{ textAlign: 'center', padding: '60px 20px' }}>
-        <h2 style={{ color: 'var(--text-primary)' }}>User not found</h2>
-        <p style={{ color: 'var(--text-muted)' }}>The profile you are looking for doesn't exist or has been removed.</p>
-        <Link href="/" style={{ color: 'var(--primary)', marginTop: '20px', display: 'inline-block' }}>Go Home</Link>
-      </div>
-    );
-  }
+  // Remove the blocking full-page spinner to allow partial/skeleton rendering
 
   return (
     <div className="ig-profile" id="profile-page" style={{ position: 'relative' }}>
+      {/* ─── Skeleton Loading State (Only if no user data yet) ─── */}
+      {!user && isLoading && (
+        <div className="profile-skeleton" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '30px' }}>
+            <div className="skeleton-circle" style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--surface-3)' }} />
+            <div style={{ flex: 1 }}>
+              <div className="skeleton-line" style={{ width: '60%', height: '20px', background: 'var(--surface-3)', marginBottom: '10px', borderRadius: '4px' }} />
+              <div className="skeleton-line" style={{ width: '40%', height: '14px', background: 'var(--surface-3)', borderRadius: '4px' }} />
+            </div>
+          </div>
+          <div className="skeleton-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2px' }}>
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} style={{ aspectRatio: '1/1', background: 'var(--surface-3)' }} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!user && !isLoading && (
+        <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+          <h2 style={{ color: 'var(--text-primary)' }}>User not found</h2>
+          <p style={{ color: 'var(--text-muted)' }}>The profile you are looking for doesn't exist.</p>
+          <Link href="/" style={{ color: 'var(--primary)', marginTop: '20px', display: 'inline-block' }}>Go Home</Link>
+        </div>
+      )}
+
+      {user && (
+        <>
       {/* ─── Toast ─── */}
       {toast && (
         <div style={{
@@ -490,11 +690,11 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
       {/* Profile Header UI (Omitted for brevity, but same as original) */}
       <div className="ig-header-main">
         <div className="ig-avatar-outer">
-          <Link href="/" className="ig-header-back-btn" aria-label="Go back">
+          <button onClick={() => router.back()} className="ig-header-back-btn" aria-label="Go back">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
             </svg>
-          </Link>
+          </button>
 
           <div className="ig-avatar-ring jumbo" onClick={() => setShowFullImage(true)} style={{ cursor: 'pointer' }}>
             <div className="ig-avatar-inner jumbo" style={{ overflow: 'hidden' }}>
@@ -502,30 +702,40 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
             </div>
           </div>
 
-          {isMe ? (
+          {isIdentityLoading ? (
+            <div style={{ width: '40px' }} /> 
+          ) : isMe ? (
             <Link 
               href="/settings" 
               className="ig-header-settings-btn" 
               aria-label="Settings"
             >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
               </svg>
             </Link>
           ) : (
-            <div ref={menuRef} style={{ position: 'absolute', top: 0, right: 0 }}>
-              <button className="ig-header-settings-btn" onClick={() => setShowOptionsMenu(prev => !prev)}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="5" cy="12" r="1.5"/>
+            <div ref={menuRef} className="ig-header-options-wrapper">
+              <button className="ig-header-settings-btn" onClick={() => setShowOptionsMenu(prev => !prev)} aria-label="Options">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/>
                 </svg>
               </button>
               {showOptionsMenu && (
                 <div className="dropdown-menu">
-                   <button onClick={handleCopyLink}>🔗 Copy Link</button>
-                   <button onClick={handleShareProfile}>📤 Share Profile</button>
-                   <button onClick={handleMuteToggle}>{isMuted ? '🔔' : '🔕'} {isMuted ? 'Unmute' : 'Mute'}</button>
-                   <button onClick={() => setShowBlockConfirm(true)}>{isBlocked ? '✅' : '🚫'} {isBlocked ? 'Unblock' : 'Block'}</button>
-                   <button onClick={() => setShowReportModal(true)}>🚩 Report</button>
+                   <button onClick={handleCopyLink}><span>🔗</span> Copy Link</button>
+                   <button onClick={handleShareProfile}><span>📤</span> Share Profile</button>
+                   <button onClick={handleMuteToggle}>
+                     <span>{isMuted ? '🔔' : '🔕'}</span> 
+                     {isMuted ? 'Unmute' : 'Mute'}
+                   </button>
+                   <button onClick={() => setShowBlockConfirm(true)} className={isBlocked ? '' : 'danger'}>
+                     <span>{isBlocked ? '✅' : '🚫'}</span> 
+                     {isBlocked ? 'Unblock' : 'Block'}
+                   </button>
+                   <button onClick={() => setShowReportModal(true)} className="danger">
+                     <span>🚩</span> Report
+                   </button>
                 </div>
               )}
             </div>
@@ -602,7 +812,129 @@ export default function ProfileClient({ id, initialData }: { id: string; initial
         </div>
       )}
 
-      {/* Modals for block, mute, report, follow-list, etc. omitted for brevity */}
+      {/* ─── Follow Modal (Followers/Following) ─── */}
+      {showFollowModal && (
+        <div className="modal-overlay" onClick={() => setShowFollowModal(null)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '70vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'center', position: 'relative' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>{showFollowModal.title}</h3>
+              <button onClick={() => setShowFollowModal(null)} style={{ position: 'absolute', right: '16px', top: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '18px' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+              {isFollowListLoading ? (
+                <div style={{ display: 'flex', justifyContent: 'center', padding: '40px' }}><div className="spinner" /></div>
+              ) : followList.length === 0 ? (
+                <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No {showFollowModal.type} yet.</div>
+              ) : (
+                followList.map((item: any) => (
+                  <div key={item.id} className="follow-list-item" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 16px', cursor: 'pointer' }}>
+                    <div 
+                      className="ig-avatar-ring" 
+                      style={{ width: '44px', height: '44px', padding: '2px' }}
+                      onClick={() => { setShowFollowModal(null); router.push(`/profile/${item.id}`); }}
+                    >
+                      <div className="ig-avatar-inner" style={{ fontSize: '18px' }}>
+                        {item.profilePicture ? <img src={item.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (item.avatar || item.name.substring(0, 1))}
+                      </div>
+                    </div>
+                    <div style={{ flex: 1 }} onClick={() => { setShowFollowModal(null); router.push(`/profile/${item.id}`); }}>
+                      <div style={{ fontWeight: 700, fontSize: '14px', color: 'var(--text-primary)' }}>{item.name}</div>
+                      <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>@{item.username || item.name.toLowerCase().replace(' ', '')}</div>
+                    </div>
+                    {currentUserId && item.id !== currentUserId && (
+                      <button 
+                        onClick={() => handleListFollowToggle(item)}
+                        className={`ig-action-btn ${myFollowingIds.has(item.id) ? 'ig-action-btn-following' : 'ig-action-btn-follow'}`}
+                        style={{ width: 'auto', padding: '6px 16px', fontSize: '13px' }}
+                      >
+                        {myFollowingIds.has(item.id) ? 'Following' : 'Follow'}
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Unfollow Confirmation ─── */}
+      {userToUnfollow && (
+        <div className="modal-overlay" onClick={() => setUserToUnfollow(null)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <div className="ig-avatar-ring" style={{ width: '90px', height: '90px', margin: '0 auto 16px', padding: '3px' }}>
+                <div className="ig-avatar-inner" style={{ fontSize: '40px' }}>
+                  {userToUnfollow.profilePicture ? <img src={userToUnfollow.profilePicture} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (userToUnfollow.avatar || userToUnfollow.name.substring(0, 1))}
+                </div>
+              </div>
+              <p style={{ fontSize: '14px', color: 'var(--text-primary)', margin: 0 }}>Unfollow @{userToUnfollow.name.toLowerCase().replace(' ', '')}?</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={confirmUnfollow} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Unfollow</button>
+              <button onClick={() => setUserToUnfollow(null)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Block Confirmation ─── */}
+      {showBlockConfirm && (
+        <div className="modal-overlay" onClick={() => setShowBlockConfirm(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>Block {user.name}?</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>They won't be able to find your profile, posts or story on ProxyPress. They won't be notified that you blocked them.</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={handleBlockConfirm} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Block</button>
+              <button onClick={() => setShowBlockConfirm(false)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Mute Confirmation ─── */}
+      {showMuteConfirm && (
+        <div className="modal-overlay" onClick={() => setShowMuteConfirm(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ textAlign: 'center' }}>
+            <div style={{ padding: '32px 24px 24px' }}>
+              <h3 style={{ margin: '0 0 8px', fontSize: '18px', fontWeight: 700 }}>Mute {user.name}?</h3>
+              <p style={{ fontSize: '14px', color: 'var(--text-muted)', margin: 0 }}>You can unmute them from their profile at any time. They won't be notified that you muted them.</p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', borderTop: '1px solid var(--border)' }}>
+              <button onClick={handleMuteConfirm} style={{ padding: '16px', background: 'none', border: 'none', borderBottom: '1px solid var(--border)', color: '#ef4444', fontWeight: 700, cursor: 'pointer' }}>Mute</button>
+              <button onClick={() => setShowMuteConfirm(false)} style={{ padding: '16px', background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Report Modal ─── */}
+      {showReportModal && (
+        <div className="modal-overlay" onClick={() => setShowReportModal(false)} style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'center' }}>
+              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700 }}>Report</h3>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              <p style={{ padding: '16px', fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Why are you reporting this account?</p>
+              {REPORT_REASONS.map(reason => (
+                <button 
+                  key={reason}
+                  onClick={() => { setReportReason(reason); handleReport(); }}
+                  style={{ width: '100%', padding: '14px 16px', textAlign: 'left', background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: '14px', cursor: 'pointer' }}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setShowReportModal(false)} style={{ padding: '16px', background: 'none', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text-primary)', cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+        </>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  padding: 0 4px;
+  padding: 0 16px;
   animation: fade-in-up 0.5s ease;
 }
 
@@ -112,13 +112,14 @@
   display: flex;
   gap: 10px;
   overflow-x: auto;
-  padding: 3px 4px;
-  margin: -10px -4px -8px;
+  padding: 3px 16px;
+  margin: -10px -16px -8px;
   scrollbar-width: none;
   -ms-overflow-style: none;
   align-items: center;
   min-height: unset;
 }
+
 
 .explore-filter-scroll::-webkit-scrollbar {
   display: none;
