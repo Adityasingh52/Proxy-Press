@@ -1226,7 +1226,7 @@ body {
 
 @media (max-width: 768px) {
   .has-mobile-header {
-    padding-top: calc(60px + env(safe-area-inset-top)) !important;
+    padding-top: calc(60px + max(24px, env(safe-area-inset-top))) !important;
   }
 }
 
