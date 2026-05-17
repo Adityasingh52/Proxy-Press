@@ -474,7 +474,12 @@ function MessagesContent() {
           }));
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('[Realtime] Subscription status:', status);
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Realtime] Channel error occurred. This usually means RLS policies are blocking read access or Realtime is not enabled for the table in Replication.');
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
